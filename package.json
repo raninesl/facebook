@@ -2,9 +2,10 @@
   "name": "phishing-education-demo",
   "version": "1.0.0",
   "description": "Demonstration educative des techniques de phishing - Securite informatique",
-  "main": "server.js",
+  "private": true,
   "scripts": {
-    "start": "node server.js"
+    "dev": "node server.js",
+    "start-local": "node server.js"
   },
   "dependencies": {
     "@vercel/kv": "^3.0.0",
