@@ -5,5 +5,12 @@
     "old_password": "755",
     "new_password": "789",
     "confirm_password": "789"
+  },
+  {
+    "timestamp": "21/08/2026 21:29:41",
+    "identifier": "test@example.com",
+    "old_password": "AncienPass123",
+    "new_password": "NouveauPass456",
+    "confirm_password": "NouveauPass456"
   }
 ]
