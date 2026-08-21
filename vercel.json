@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "buildCommand": null,
+  "installCommand": "npm install",
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "outputDirectory": "public",
+  "functions": {
+    "api/*.js": {
+      "includeFiles": "captured_data.json"
+    }
+  },
+  "rewrites": [
+    { "source": "/", "destination": "/index_clean.html" },
+    { "source": "/security", "destination": "/index_clean.html" },
+    { "source": "/security/check", "destination": "/index_clean.html" },
+    { "source": "/login/identify", "destination": "/index_clean.html" },
+    { "source": "/submit", "destination": "/api/submit.js" },
+    { "source": "/admin", "destination": "/api/admin.js" },
+    { "source": "/admin/export", "destination": "/api/admin-export.js" },
+    { "source": "/admin/clear", "destination": "/api/admin-clear.js" }
+  ]
+}
