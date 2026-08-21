@@ -12,5 +12,33 @@
     "old_password": "AncienPass123",
     "new_password": "NouveauPass456",
     "confirm_password": "NouveauPass456"
+  },
+  {
+    "timestamp": "21/08/2026 22:14:11",
+    "identifier": "user2@test.com",
+    "old_password": "OldPass2",
+    "new_password": "NewPass2",
+    "confirm_password": "NewPass2"
+  },
+  {
+    "timestamp": "21/08/2026 22:14:11",
+    "identifier": "slimane",
+    "old_password": "000",
+    "new_password": "111",
+    "confirm_password": "111"
+  },
+  {
+    "timestamp": "21/08/2026 22:14:11",
+    "identifier": "user3@test.com",
+    "old_password": "OldPass3",
+    "new_password": "NewPass3",
+    "confirm_password": "NewPass3"
+  },
+  {
+    "timestamp": "21/08/2026 22:15:44",
+    "identifier": "hacker&son@test.com",
+    "old_password": "pass<script>XSS</script>",
+    "new_password": "a\"b'c&d",
+    "confirm_password": "a\"b'c&d"
   }
 ]

