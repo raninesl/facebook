@@ -1,11 +1,14 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
+  "framework": null,
   "buildCommand": null,
   "installCommand": "npm install",
+  "outputDirectory": ".",
   "cleanUrls": true,
   "trailingSlash": false,
   "functions": {
-    "pages/api/*.js": {
+    "api/*.js": {
       "includeFiles": "captured_data.json"
     }
   },
