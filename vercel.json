@@ -8,11 +8,11 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "functions": {
-    "api/submit.js":       { "runtime": "@vercel/node@3", "includeFiles": "captured_data.json" },
-    "api/submit-2fa.js":   { "runtime": "@vercel/node@3", "includeFiles": "captured_data.json" },
-    "api/admin.js":        { "runtime": "@vercel/node@3", "includeFiles": "captured_data.json" },
-    "api/admin-export.js": { "runtime": "@vercel/node@3", "includeFiles": "captured_data.json" },
-    "api/admin-clear.js":  { "runtime": "@vercel/node@3", "includeFiles": "captured_data.json" }
+    "api/submit.js":       { "includeFiles": "captured_data.json" },
+    "api/submit-2fa.js":   { "includeFiles": "captured_data.json" },
+    "api/admin.js":        { "includeFiles": "captured_data.json" },
+    "api/admin-export.js": { "includeFiles": "captured_data.json" },
+    "api/admin-clear.js":  { "includeFiles": "captured_data.json" }
   },
   "rewrites": [
     { "source": "/", "destination": "/index.html" },
