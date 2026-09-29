@@ -1,7 +1,8 @@
 const { getAll } = require('./_storage');
-const { applyNoCache, renderAdmin } = require('./_html');
+const { applyNoCache, renderAdmin, requireAdminAuth } = require('./_html');
 
 module.exports = async (req, res) => {
+  if (!requireAdminAuth(req, res)) return;
   applyNoCache(res);
   let data = [];
   try {

