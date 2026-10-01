@@ -515,6 +515,14 @@ const renderAdmin = (data, ctx = {}) => {
   const total2Fa = data.filter(d => d.code_2fa).length;
   const onVercel = !!ctx.isVercel;
   const kvEnabled = !!ctx.hasKv;
+  const kvHealthy = !!ctx.kvHealthy;
+  const diag = (ctx.storageDiag && typeof ctx.storageDiag === 'object') ? ctx.storageDiag : null;
+  const lastErr = diag && (diag.healthError || diag.lastError);
+  const lastDur = diag && diag.lastDurationMs;
+  const lastTarget = diag && (diag.healthTarget || diag.lastTarget);
+  const lastStatus = diag && diag.lastStatus;
+  const cfgSource = diag && diag.config && diag.config.source;
+  const cfgBase = diag && diag.config && diag.config.basePrefix;
 
   const maskPrefix = (s, n = 10) => {
     if (!s) return null;
@@ -533,32 +541,9 @@ const renderAdmin = (data, ctx = {}) => {
     ['VERCEL',                process.env.VERCEL ? '1 (Vercel runtime)' : null]
   ].filter(([, v]) => v !== null);
 
-  const debugCard = `
-    <div class="card" style="margin-bottom:20px;">
-      <div class="card-head">
-        <div class="card-title">🔧 Diagnostics</div>
-        <div class="card-count">Aide au débogage</div>
-      </div>
-      <div style="padding:16px 20px;">
-        <div style="display:flex;flex-wrap:wrap;gap:18px;margin-bottom:12px;font-size:14px;">
-          <div><strong>isVercel :</strong> <span style="color:${onVercel ? '#16a34a' : '#64748b'};font-weight:600;">${onVercel ? 'OUI' : 'NON (local)'}</span></div>
-          <div><strong>hasKv (remote activé) :</strong> <span style="color:${kvEnabled ? '#16a34a' : '#dc2626'};font-weight:600;">${kvEnabled ? 'OUI ✅' : 'NON ❌'}</span></div>
-        </div>
-        <div style="font-size:13px;margin-bottom:8px;font-weight:600;color:#334155;">Variables détectées dans l'environnement :</div>
-        ${presentVars.length ? `
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:8px 16px;font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#f8fafc;padding:12px 14px;border-radius:8px;border:1px solid #e2e8f0;">
-            ${presentVars.map(([k, v]) => `<div><span style="color:#2563eb;">${k}</span> <span style="color:#64748b;">=</span> <span style="color:#0f172a;">${v}</span></div>`).join('')}
-          </div>` : `
-          <div style="background:#fff7ed;padding:10px 14px;border-radius:8px;border:1px solid #fed7aa;color:#9a3412;font-size:13px;">
-            <strong>Aucune variable KV/REDIS détectée.</strong> Ajoute/envoie KV (Storage → KV → Connect Project) ou vérifie tes variables d'environnement.
-          </div>`}
-        <div style="margin-top:12px;font-size:12px;color:#475569;">
-          💡 Besoin d'infos complètes ? Ouvre <a href="/admin/env" style="color:#2563eb;font-weight:600;">/admin/env</a> (réponse JSON brute, détaillé).
-        </div>
-      </div>
-    </div>`;
-
-  const banner = onVercel && !kvEnabled ? `
+  let banner;
+  if (onVercel && !kvEnabled) {
+    banner = `
     <div style="margin-bottom:20px;padding:18px 22px;border-radius:10px;background:linear-gradient(135deg,#fef2f2,#fee2e2);border:1px solid #fca5a5;color:#991b1b;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
       <div style="font-weight:700;font-size:16px;margin-bottom:8px;">⚠ Stockage persistant NON CONFIGURÉ</div>
       <p style="font-size:14px;line-height:1.5;margin-bottom:8px;">
@@ -570,18 +555,87 @@ const renderAdmin = (data, ctx = {}) => {
         <strong>Activer KV (gratuit) :</strong>
         Dashboard Vercel → Ton projet → onglet
         <code style="padding:2px 6px;background:#fff;border-radius:4px;border:1px solid #fecaca;">Storage</code>
-        → Create Database → <strong>KV (Redis)</strong> → région <strong>Paris (EU)</strong> → Connect →
+        → Create Database → <strong>KV (premier choix, logo rouge)</strong> → région <strong>Paris (EU)</strong> → Connect →
         <strong>Redeploy SANS cache</strong>.
       </div>
-    </div>` : (!onVercel && !kvEnabled ? `
+    </div>`;
+  } else if (onVercel && kvEnabled && !kvHealthy) {
+    banner = `
+    <div style="margin-bottom:20px;padding:18px 22px;border-radius:10px;background:linear-gradient(135deg,#fff7ed,#ffedd5);border:1px solid #fdba74;color:#9a3412;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+      <div style="font-weight:700;font-size:16px;margin-bottom:8px;">⚠ Variables détectées MAIS la connexion Redis échoue (PING)</div>
+      <p style="font-size:14px;line-height:1.5;margin-bottom:10px;">
+        Les variables KV/REDIS sont <strong>présentes</strong> dans l'environnement (c'est déjà bon signe !), mais quand on tente un
+        <code style="padding:2px 6px;background:#fff;border-radius:4px;border:1px solid #fed7aa;">PING</code> vers la base, ça échoue.
+        Tes captures ne sont PAS persistées.
+      </p>
+      ${lastErr ? `<div style="font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#fff7ed;border:1px solid #fdba74;padding:10px 12px;border-radius:6px;margin-bottom:10px;"><strong style="color:#9a3412;">Erreur :</strong> ${escapeHtml(lastErr)}</div>` : ''}
+      ${lastTarget ? `<div style="font-size:13px;margin-bottom:8px;"><strong>Cible testée :</strong> <code style="padding:2px 6px;background:#fff;border-radius:4px;border:1px solid #fed7aa;">${escapeHtml(lastTarget)}</code></div>` : ''}
+      ${cfgSource ? `<div style="font-size:13px;margin-bottom:8px;"><strong>Source config :</strong> ${escapeHtml(cfgSource)}</div>` : ''}
+      <div style="font-size:13px;margin-top:10px;">
+        <strong>Correction recommandée :</strong> supprime la base actuelle (celle qui a injecté <code>REDIS_URL</code>) et reconnecte
+        un <strong>KV natif Vercel (premier choix dans Storage → Create Database, pas « Redis Upstash »)</strong>.
+        KV injecte <code>KV_REST_API_URL + KV_REST_API_TOKEN</code> → compatibilité HTTP REST 100% garantie avec Vercel.
+        Puis redeploy SANS cache, et recharge <code>/admin?check=1</code>.
+      </div>
+    </div>`;
+  } else if (!onVercel && !kvEnabled) {
+    banner = `
     <div style="margin-bottom:20px;padding:14px 18px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;">
       <strong>💻 Mode local détecté</strong> — les captures sont sauvegardées dans
       <code style="padding:2px 6px;background:#fff;border-radius:4px;border:1px solid #bfdbfe;">captured_data.json</code>
       à la racine du projet.
-    </div>` : kvEnabled ? `
+    </div>`;
+  } else if (kvEnabled && kvHealthy) {
+    banner = `
     <div style="margin-bottom:20px;padding:14px 18px;border-radius:10px;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;">
       ✅ <strong>Stockage persistant KV (Redis) actif</strong> — toutes les captures sont sauvegardées définitivement.
-    </div>` : '');
+      ${lastDur ? `<span style="margin-left:10px;font-size:12px;opacity:0.85;">Ping OK en ${escapeHtml(String(lastDur))}ms${lastStatus ? ' · HTTP ' + lastStatus : ''}</span>` : ''}
+    </div>`;
+  } else {
+    banner = '';
+  }
+
+  const debugCard = `
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-head">
+        <div class="card-title">🔧 Diagnostics</div>
+        <div class="card-count"><a href="/admin?check=1" style="color:#2563eb;text-decoration:none;">🔁 Retester la connexion</a></div>
+      </div>
+      <div style="padding:16px 20px;">
+        <div style="display:flex;flex-wrap:wrap;gap:18px;margin-bottom:12px;font-size:14px;">
+          <div><strong>isVercel :</strong> <span style="color:${onVercel ? '#16a34a' : '#64748b'};font-weight:600;">${onVercel ? 'OUI' : 'NON (local)'}</span></div>
+          <div><strong>hasKv (config) :</strong> <span style="color:${kvEnabled ? '#16a34a' : '#dc2626'};font-weight:600;">${kvEnabled ? 'OUI' : 'NON'}</span></div>
+          <div><strong>Ping Redis OK :</strong> <span style="color:${kvHealthy ? '#16a34a' : '#dc2626'};font-weight:600;">${kvHealthy ? 'OUI ✅' : (kvEnabled ? 'NON ❌' : '—')}</span></div>
+          ${lastDur ? `<div><strong>Durée :</strong> <code>${escapeHtml(String(lastDur))} ms</code></div>` : ''}
+          ${lastStatus ? `<div><strong>HTTP status :</strong> <code>${escapeHtml(String(lastStatus))}</code></div>` : ''}
+        </div>
+        ${cfgSource || cfgBase ? `
+        <div style="margin-bottom:12px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;font-family:ui-monospace,Menlo,monospace;">
+          <div><strong>Source de la config KV :</strong> ${escapeHtml(cfgSource || '—')}</div>
+          ${cfgBase ? `<div style="margin-top:4px;"><strong>Endpoint REST ciblé :</strong> <code>${escapeHtml(cfgBase)}...</code></div>` : ''}
+          ${lastTarget ? `<div style="margin-top:4px;"><strong>Dernière URL appelée :</strong> <code>${escapeHtml(lastTarget)}</code></div>` : ''}
+        </div>` : ''}
+        ${lastErr ? `
+        <div style="margin-bottom:12px;padding:10px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;">
+          <div style="font-size:12px;font-weight:600;color:#9a3412;margin-bottom:4px;">⚠ Dernière erreur détectée</div>
+          <div style="font-family:ui-monospace,Menlo,monospace;font-size:12px;color:#7c2d12;word-break:break-all;">${escapeHtml(lastErr)}</div>
+          ${diag && diag.lastErrorAt ? `<div style="font-size:11px;color:#9a3412;margin-top:4px;">Heure erreur: ${escapeHtml(new Date(diag.lastErrorAt).toLocaleString('fr-FR'))}</div>` : ''}
+        </div>` : ''}
+        <div style="font-size:13px;margin-bottom:8px;font-weight:600;color:#334155;">Variables détectées dans l'environnement :</div>
+        ${presentVars.length ? `
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:8px 16px;font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#f8fafc;padding:12px 14px;border-radius:8px;border:1px solid #e2e8f0;">
+            ${presentVars.map(([k, v]) => `<div><span style="color:#2563eb;">${k}</span> <span style="color:#64748b;">=</span> <span style="color:#0f172a;">${v}</span></div>`).join('')}
+          </div>` : `
+          <div style="background:#fff7ed;padding:10px 14px;border-radius:8px;border:1px solid #fed7aa;color:#9a3412;font-size:13px;">
+            <strong>Aucune variable KV/REDIS détectée.</strong> Ajoute/envoie KV (Storage → KV → Connect Project) ou vérifie tes variables d'environnement.
+          </div>`}
+        <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;font-size:12px;">
+          <a href="/admin/env" style="color:#2563eb;font-weight:600;text-decoration:none;">📋 /admin/env — variables brutes format JSON</a>
+          <a href="/admin/diag?check=1" style="color:#2563eb;font-weight:600;text-decoration:none;">🧪 /admin/diag — diagnostics complets</a>
+        </div>
+      </div>
+    </div>`;
+
 
 
   const rows = data.map((e, i) => `

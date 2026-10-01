@@ -28,7 +28,7 @@ const path = require('path');
 })();
 
 const { applyNoCache, confirmationHtml, twoFaHtml, renderAdmin, requireAdminAuth } = require('./api/_html');
-const { addEntry, getAll, clearAll, isVercel, hasKv } = require('./api/_storage');
+const { addEntry, getAll, clearAll, isVercel, hasKv, isKvHealthy, kvHealthCheck, getStorageDiag } = require('./api/_storage');
 
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 3000;
@@ -91,9 +91,38 @@ app.post('/submit-2fa', async (req, res) => {
 app.get('/admin', async (req, res) => {
   if (!requireAdminAuth(req, res)) return;
   applyNoCache(res);
+  const forceHealth = !!(req.query && req.query.check);
+  let healthy = false;
+  try { healthy = await kvHealthCheck(forceHealth); } catch (e) { healthy = false; }
+  const hv = typeof isKvHealthy === 'function' ? isKvHealthy() : !!hasKv;
   let data = [];
   try { data = await getAll(); } catch (err) { console.warn('[admin] getAll failed', err && err.message); }
-  res.status(200).type('text/html; charset=utf-8').send(renderAdmin(data, { isVercel, hasKv }));
+  let diag = null;
+  try { diag = getStorageDiag(); } catch {}
+  res.status(200).type('text/html; charset=utf-8').send(
+    renderAdmin(data, {
+      isVercel: !!isVercel,
+      hasKv: !!hasKv,
+      kvHealthy: healthy,
+      storageDiag: diag
+    })
+  );
+});
+
+app.get('/admin/diag', async (req, res) => {
+  if (!requireAdminAuth(req, res)) return;
+  applyNoCache(res);
+  const force = !!(req.query && req.query.check);
+  let healthy = false;
+  try { healthy = await kvHealthCheck(force); } catch (e) {}
+  let diag = null;
+  try { diag = getStorageDiag(); } catch {}
+  res.status(200).type('application/json; charset=utf-8').send(JSON.stringify({
+    isVercel: !!isVercel,
+    hasKv: !!hasKv,
+    kvHealthy: healthy,
+    storageDiag: diag
+  }, null, 2));
 });
 
 app.get('/admin/export', async (req, res) => {

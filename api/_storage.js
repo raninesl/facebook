@@ -6,11 +6,18 @@ const LIST_KEY = 'captured_entries_v1';
 const LOCAL_FILE = process.env.STORAGE_FILE
   || path.join(process.cwd(), 'captured_data.json');
 
-const isVercel = !!process.env.VERCEL
-  || !!process.env.KV_REST_API_URL
-  || !!process.env.UPSTASH_REDIS_REST_URL
-  || !!process.env.REDIS_URL
-  || !!process.env.KV_URL;
+const storageDiag = {
+  lastError: null,
+  lastErrorAt: null,
+  lastTarget: null,
+  lastStatus: null,
+  lastDurationMs: null,
+  config: null,
+  healthChecked: false,
+  healthOk: false,
+  healthError: null,
+  healthTarget: null
+};
 
 function parseRedisUrl(url) {
   if (!url || typeof url !== 'string') return null;
@@ -37,12 +44,12 @@ function parseRedisUrl(url) {
         token = up >= 0 ? userPass.slice(up + 1) : userPass;
       }
       if (host && token) {
-        if (/^[a-z0-9\-]+\.upstash\.io$/i.test(host)) {
+        if (/\.upstash\.io$/i.test(host)) {
           restEndpoint = 'https://' + host;
         } else if (/localhost|127\.0\.0\.1/i.test(host)) {
           return null;
         } else if (host.length >= 6) {
-          restEndpoint = 'https://' + host + ':443';
+          restEndpoint = 'https://' + host;
         }
       }
     } else if (/^https?:\/\//i.test(u)) {
@@ -51,27 +58,56 @@ function parseRedisUrl(url) {
     }
     if (restEndpoint && token) return { base: restEndpoint, token, host };
   } catch (e) {
+    storageDiag.lastError = 'parseRedisUrl: ' + (e && e.message);
+    storageDiag.lastErrorAt = Date.now();
     console.warn('[storage] Impossible de parser REDIS_URL', e && e.message);
   }
   return null;
 }
 
+function fetchWithTimeout(url, opts, timeoutMs = 4500) {
+  const start = Date.now();
+  let timeoutId = null;
+  const ctrl = new AbortController();
+  if (timeoutMs > 0) {
+    timeoutId = setTimeout(() => ctrl.abort(new Error('Timeout ' + timeoutMs + 'ms')), timeoutMs);
+  }
+  const req = (typeof fetch === 'function')
+    ? fetch(url, Object.assign({ signal: ctrl.signal }, opts || {}))
+    : Promise.reject(new Error('fetch non disponible'));
+  return req.then(
+    (r) => {
+      clearTimeout(timeoutId);
+      storageDiag.lastDurationMs = Date.now() - start;
+      return r;
+    },
+    (err) => {
+      clearTimeout(timeoutId);
+      storageDiag.lastDurationMs = Date.now() - start;
+      throw err;
+    }
+  );
+}
+
 const kv = (() => {
   let url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
   let token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+  let source = 'KV_OR_UPSTASH_REST';
   if ((!url || !token) && process.env.REDIS_URL) {
     const p = parseRedisUrl(process.env.REDIS_URL);
-    if (p) { url = p.base; token = p.token; }
+    if (p) { url = p.base; token = p.token; source = 'REDIS_URL -> ' + (p.host || ''); }
   }
   if ((!url || !token) && process.env.KV_URL) {
     const p = parseRedisUrl(process.env.KV_URL);
     if (p) {
       url = p.base;
       token = process.env.KV_REST_TOKEN || p.token || '';
+      source = 'KV_URL -> ' + (p.host || '');
     } else if (/^https?:\/\//i.test(process.env.KV_URL)) {
       const slash = process.env.KV_URL.indexOf('/', process.env.KV_URL.indexOf('://') + 3);
       url = (slash > 0 ? process.env.KV_URL.slice(0, slash) : process.env.KV_URL).replace(/\/$/, '');
       token = process.env.KV_REST_TOKEN || '';
+      source = 'KV_URL https -> ' + url;
     }
   }
   if (!url || !token) return null;
@@ -80,22 +116,30 @@ const kv = (() => {
     Authorization: `Bearer ${token}`,
     'Content-Type': 'application/json'
   };
+  storageDiag.config = { basePrefix: base.slice(0, 24) + (base.length > 24 ? '...' : ''), source };
   const request = async (body) => {
+    const target = base + '/';
+    storageDiag.lastTarget = target;
+    storageDiag.lastStatus = null;
     try {
-      const res = await fetch(`${base}/`, {
+      const res = await fetchWithTimeout(target, {
         method: 'POST',
         headers,
         body: JSON.stringify(body)
-      });
+      }, 4500);
+      storageDiag.lastStatus = res.status;
       if (!res.ok) {
         const t = await res.text();
-        console.warn('[storage] Upstash HTTP error', res.status, (t || '').slice(0, 250));
+        storageDiag.lastError = 'HTTP ' + res.status + ': ' + ((t || '').slice(0, 120));
+        storageDiag.lastErrorAt = Date.now();
         return null;
       }
       const json = await res.json();
+      storageDiag.lastError = null;
       return json;
     } catch (err) {
-      console.warn('[storage] Upstash request failed', err && err.message);
+      storageDiag.lastError = (err && err.code ? err.code + ': ' : '') + (err && err.message ? err.message : String(err));
+      storageDiag.lastErrorAt = Date.now();
       return null;
     }
   };
@@ -105,7 +149,9 @@ const kv = (() => {
     if (alt0 !== undefined && Array.isArray(r) && r.length > 0) return r[0];
     return r;
   };
-  return {
+  const out = {
+    source,
+    base,
     async lpush(key, value) {
       const r = await request(['LPUSH', key, JSON.stringify(value)]);
       const v = extractSingle(r, true);
@@ -124,11 +170,45 @@ const kv = (() => {
       const r = await request(['DEL', key]);
       const v = extractSingle(r, true);
       return v === null || v === undefined ? null : v;
+    },
+    async ping() {
+      const r = await request(['PING']);
+      if (r === null) return false;
+      const s = extractSingle(r, false);
+      return (typeof s === 'string') ? /pong/i.test(s) : (s !== null && s !== undefined);
     }
   };
+  return out;
 })();
 
-const hasKv = !!kv;
+let hasKv = !!kv;
+let isKvHealthy = !!kv;
+
+async function kvHealthCheck(force = false) {
+  if (!kv) { isKvHealthy = false; storageDiag.healthChecked = true; return false; }
+  if (storageDiag.healthChecked && !force) return storageDiag.healthOk;
+  storageDiag.healthChecked = true;
+  storageDiag.healthError = null;
+  storageDiag.healthTarget = storageDiag.config && storageDiag.config.basePrefix;
+  try {
+    const ok = await kv.ping();
+    if (!ok) throw new Error('PING null / réponse invalide');
+    storageDiag.healthOk = true;
+    isKvHealthy = true;
+    hasKv = true;
+  } catch (e) {
+    storageDiag.healthOk = false;
+    storageDiag.healthError = (e && e.message || String(e)).slice(0, 200);
+    isKvHealthy = false;
+  }
+  return storageDiag.healthOk;
+}
+
+const isVercel = !!process.env.VERCEL
+  || !!process.env.KV_REST_API_URL
+  || !!process.env.UPSTASH_REDIS_REST_URL
+  || !!process.env.REDIS_URL
+  || !!process.env.KV_URL;
 
 function readLocalFile() {
   try {
@@ -192,8 +272,16 @@ async function clearAll() {
 module.exports = {
   isVercel,
   hasKv,
+  isKvHealthy: () => isKvHealthy,
   getAll,
   addEntry,
   clearAll,
-  parseRedisUrl
+  parseRedisUrl,
+  kvHealthCheck,
+  getStorageDiag: () => JSON.parse(JSON.stringify(storageDiag, (k, v) => {
+    if (typeof v === 'string' && (k === 'healthTarget' || k === 'lastTarget' || k === 'config')) {
+      return v;
+    }
+    return v;
+  }))
 };
