@@ -167,5 +167,6 @@ module.exports = {
   hasKv,
   getAll,
   addEntry,
-  clearAll
+  clearAll,
+  parseRedisUrl
 };

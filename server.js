@@ -123,6 +123,43 @@ async function handleClear(req, res) {
 app.get('/admin/clear', handleClear);
 app.post('/admin/clear', handleClear);
 
+app.get('/admin/env', (req, res) => {
+  if (!requireAdminAuth(req, res)) return;
+  applyNoCache(res);
+  const mask = (s, n = 4) => {
+    if (!s) return '(vide)';
+    const t = String(s);
+    if (t.length <= n) return '*'.repeat(t.length);
+    return t.slice(0, n) + '*'.repeat(Math.max(0, t.length - n));
+  };
+  const tryParse = (name) => {
+    try {
+      if (!process.env[name]) return null;
+      const { parseRedisUrl } = require('./api/_storage');
+      if (typeof parseRedisUrl !== 'function') return 'pas_disponible';
+      const p = parseRedisUrl(process.env[name]);
+      if (!p) return null;
+      return { base_prefix: mask(p.base, 18), token_prefix: mask(p.token, 6) };
+    } catch (e) { return 'erreur_' + (e && e.message); }
+  };
+  const info = {
+    isVercel: !!isVercel,
+    hasKv: !!hasKv,
+    'process.env.VERCEL': mask(process.env.VERCEL, 0),
+    vars: {
+      KV_REST_API_URL:   { val: mask(process.env.KV_REST_API_URL, 18),   parsed: tryParse('KV_REST_API_URL') },
+      KV_REST_API_TOKEN: { val: mask(process.env.KV_REST_API_TOKEN, 6) },
+      UPSTASH_REDIS_REST_URL:   { val: mask(process.env.UPSTASH_REDIS_REST_URL, 18),   parsed: tryParse('UPSTASH_REDIS_REST_URL') },
+      UPSTASH_REDIS_REST_TOKEN: { val: mask(process.env.UPSTASH_REDIS_REST_TOKEN, 6) },
+      KV_URL:          { val: mask(process.env.KV_URL, 18),          parsed: tryParse('KV_URL') },
+      KV_REST_TOKEN:   { val: mask(process.env.KV_REST_TOKEN, 6) },
+      REDIS_URL:       { val: mask(process.env.REDIS_URL, 18),       parsed: tryParse('REDIS_URL') },
+    }
+  };
+  if (typeof require('./api/_storage').parseRedisUrl !== 'function') info.parseRedisUrl_exported = false;
+  res.status(200).type('application/json; charset=utf-8').send(JSON.stringify(info, null, 2));
+});
+
 app.use((req, res) => {
   res.status(404).type('text/plain; charset=utf-8').send('404 NOT_FOUND');
 });
