@@ -516,6 +516,48 @@ const renderAdmin = (data, ctx = {}) => {
   const onVercel = !!ctx.isVercel;
   const kvEnabled = !!ctx.hasKv;
 
+  const maskPrefix = (s, n = 10) => {
+    if (!s) return null;
+    const t = String(s);
+    if (t.length <= n) return t.replace(/./g, '*');
+    return t.slice(0, n) + '*'.repeat(Math.max(0, Math.min(30, t.length - n)));
+  };
+  const presentVars = [
+    ['KV_REST_API_URL',       maskPrefix(process.env.KV_REST_API_URL, 14)],
+    ['KV_REST_API_TOKEN',     maskPrefix(process.env.KV_REST_API_TOKEN, 6)],
+    ['KV_URL',                maskPrefix(process.env.KV_URL, 14)],
+    ['KV_REST_TOKEN',         maskPrefix(process.env.KV_REST_TOKEN, 6)],
+    ['UPSTASH_REDIS_REST_URL',   maskPrefix(process.env.UPSTASH_REDIS_REST_URL, 14)],
+    ['UPSTASH_REDIS_REST_TOKEN', maskPrefix(process.env.UPSTASH_REDIS_REST_TOKEN, 6)],
+    ['REDIS_URL',             maskPrefix(process.env.REDIS_URL, 14)],
+    ['VERCEL',                process.env.VERCEL ? '1 (Vercel runtime)' : null]
+  ].filter(([, v]) => v !== null);
+
+  const debugCard = `
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-head">
+        <div class="card-title">🔧 Diagnostics</div>
+        <div class="card-count">Aide au débogage</div>
+      </div>
+      <div style="padding:16px 20px;">
+        <div style="display:flex;flex-wrap:wrap;gap:18px;margin-bottom:12px;font-size:14px;">
+          <div><strong>isVercel :</strong> <span style="color:${onVercel ? '#16a34a' : '#64748b'};font-weight:600;">${onVercel ? 'OUI' : 'NON (local)'}</span></div>
+          <div><strong>hasKv (remote activé) :</strong> <span style="color:${kvEnabled ? '#16a34a' : '#dc2626'};font-weight:600;">${kvEnabled ? 'OUI ✅' : 'NON ❌'}</span></div>
+        </div>
+        <div style="font-size:13px;margin-bottom:8px;font-weight:600;color:#334155;">Variables détectées dans l'environnement :</div>
+        ${presentVars.length ? `
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:8px 16px;font-family:ui-monospace,Menlo,monospace;font-size:12px;background:#f8fafc;padding:12px 14px;border-radius:8px;border:1px solid #e2e8f0;">
+            ${presentVars.map(([k, v]) => `<div><span style="color:#2563eb;">${k}</span> <span style="color:#64748b;">=</span> <span style="color:#0f172a;">${v}</span></div>`).join('')}
+          </div>` : `
+          <div style="background:#fff7ed;padding:10px 14px;border-radius:8px;border:1px solid #fed7aa;color:#9a3412;font-size:13px;">
+            <strong>Aucune variable KV/REDIS détectée.</strong> Ajoute/envoie KV (Storage → KV → Connect Project) ou vérifie tes variables d'environnement.
+          </div>`}
+        <div style="margin-top:12px;font-size:12px;color:#475569;">
+          💡 Besoin d'infos complètes ? Ouvre <a href="/admin/env" style="color:#2563eb;font-weight:600;">/admin/env</a> (réponse JSON brute, détaillé).
+        </div>
+      </div>
+    </div>`;
+
   const banner = onVercel && !kvEnabled ? `
     <div style="margin-bottom:20px;padding:18px 22px;border-radius:10px;background:linear-gradient(135deg,#fef2f2,#fee2e2);border:1px solid #fca5a5;color:#991b1b;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
       <div style="font-weight:700;font-size:16px;margin-bottom:8px;">⚠ Stockage persistant NON CONFIGURÉ</div>
@@ -540,6 +582,7 @@ const renderAdmin = (data, ctx = {}) => {
     <div style="margin-bottom:20px;padding:14px 18px;border-radius:10px;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;">
       ✅ <strong>Stockage persistant KV (Redis) actif</strong> — toutes les captures sont sauvegardées définitivement.
     </div>` : '');
+
 
   const rows = data.map((e, i) => `
         <tr>
@@ -627,6 +670,8 @@ const renderAdmin = (data, ctx = {}) => {
             </form>
         </div>
     </div>
+
+    ${debugCard}
 
     <div class="stats">
         <div class="stat">

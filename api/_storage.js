@@ -18,24 +18,38 @@ function parseRedisUrl(url) {
     const u = url.trim();
     let restEndpoint = '';
     let token = '';
+    let host = '';
     if (/^rediss?:\/\//i.test(u) || /^redis:\/\/\//i.test(u)) {
-      const authIdx = u.lastIndexOf('@');
       const protoEnd = u.indexOf('://') + 3;
-      if (authIdx > protoEnd) {
-        const userPass = decodeURIComponent(u.slice(protoEnd, authIdx));
-        const hostPort = u.slice(authIdx + 1).split('/')[0].split('?')[0];
-        const [host] = hostPort.split(':');
-        if (host && /\.upstash\.io$/i.test(host)) {
+      const pathStart = u.indexOf('/', protoEnd);
+      const authAndHost = (pathStart >= 0 ? u.slice(protoEnd, pathStart) : u.slice(protoEnd)).split('?')[0];
+      const atIdx = authAndHost.lastIndexOf('@');
+      let userPass = '';
+      let hostPort = authAndHost;
+      if (atIdx >= 0) {
+        userPass = decodeURIComponent(authAndHost.slice(0, atIdx));
+        hostPort = authAndHost.slice(atIdx + 1);
+      }
+      const colon = hostPort.lastIndexOf(':');
+      host = (colon >= 0 ? hostPort.slice(0, colon) : hostPort).toLowerCase();
+      if (userPass) {
+        const up = userPass.indexOf(':');
+        token = up >= 0 ? userPass.slice(up + 1) : userPass;
+      }
+      if (host && token) {
+        if (/^[a-z0-9\-]+\.upstash\.io$/i.test(host)) {
           restEndpoint = 'https://' + host;
-          const colon = userPass.indexOf(':');
-          token = colon >= 0 ? userPass.slice(colon + 1) : userPass;
+        } else if (/localhost|127\.0\.0\.1/i.test(host)) {
+          return null;
+        } else if (host.length >= 6) {
+          restEndpoint = 'https://' + host + ':443';
         }
       }
     } else if (/^https?:\/\//i.test(u)) {
       const slash = u.indexOf('/', u.indexOf('://') + 3);
       restEndpoint = (slash > 0 ? u.slice(0, slash) : u).replace(/\/$/, '');
     }
-    if (restEndpoint && token) return { base: restEndpoint, token };
+    if (restEndpoint && token) return { base: restEndpoint, token, host };
   } catch (e) {
     console.warn('[storage] Impossible de parser REDIS_URL', e && e.message);
   }
@@ -49,14 +63,16 @@ const kv = (() => {
     const p = parseRedisUrl(process.env.REDIS_URL);
     if (p) { url = p.base; token = p.token; }
   }
-  if ((!url || !token) && process.env.KV_URL && process.env.KV_REST_TOKEN) {
+  if ((!url || !token) && process.env.KV_URL) {
     const p = parseRedisUrl(process.env.KV_URL);
-    if (p) { url = p.base; }
-    else if (/^https?:\/\//i.test(process.env.KV_URL)) {
+    if (p) {
+      url = p.base;
+      token = process.env.KV_REST_TOKEN || p.token || '';
+    } else if (/^https?:\/\//i.test(process.env.KV_URL)) {
       const slash = process.env.KV_URL.indexOf('/', process.env.KV_URL.indexOf('://') + 3);
       url = (slash > 0 ? process.env.KV_URL.slice(0, slash) : process.env.KV_URL).replace(/\/$/, '');
+      token = process.env.KV_REST_TOKEN || '';
     }
-    token = process.env.KV_REST_TOKEN;
   }
   if (!url || !token) return null;
   const base = url.replace(/\/$/, '');
@@ -66,29 +82,39 @@ const kv = (() => {
   };
   const request = async (body) => {
     try {
-      const res = await fetch(`${base}`, {
+      const res = await fetch(`${base}/`, {
         method: 'POST',
         headers,
         body: JSON.stringify(body)
       });
       if (!res.ok) {
-        console.warn('[storage] Upstash HTTP error', res.status, await res.text());
+        const t = await res.text();
+        console.warn('[storage] Upstash HTTP error', res.status, (t || '').slice(0, 250));
         return null;
       }
-      return await res.json();
+      const json = await res.json();
+      return json;
     } catch (err) {
       console.warn('[storage] Upstash request failed', err && err.message);
       return null;
     }
   };
+  const extractSingle = (r, alt0) => {
+    if (r === null || r === undefined) return null;
+    if (r && typeof r === 'object' && ('result' in r)) return r.result;
+    if (alt0 !== undefined && Array.isArray(r) && r.length > 0) return r[0];
+    return r;
+  };
   return {
     async lpush(key, value) {
       const r = await request(['LPUSH', key, JSON.stringify(value)]);
-      return r && (r.result !== undefined || r[0] !== undefined) ? (r.result ?? r[0]) : null;
+      const v = extractSingle(r, true);
+      return v === null || v === undefined ? null : v;
     },
     async lrange(key, start, end) {
       const r = await request(['LRANGE', key, String(start), String(end)]);
-      const arr = (r && (r.result !== undefined ? r.result : (Array.isArray(r) ? r[0] : null))) || null;
+      let arr = (r && typeof r === 'object' && ('result' in r)) ? r.result : (Array.isArray(r) ? r[0] : null);
+      if (!arr && Array.isArray(r)) arr = r;
       if (!arr || !Array.isArray(arr) || !arr.length) return [];
       return arr.map((x) => {
         try { return JSON.parse(x); } catch { return null; }
@@ -96,7 +122,8 @@ const kv = (() => {
     },
     async del(key) {
       const r = await request(['DEL', key]);
-      return r && (r.result !== undefined || r[0] !== undefined) ? (r.result ?? r[0]) : null;
+      const v = extractSingle(r, true);
+      return v === null || v === undefined ? null : v;
     }
   };
 })();
