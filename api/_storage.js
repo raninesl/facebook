@@ -92,22 +92,30 @@ async function getAll() {
 
 async function addEntry(entry) {
   let remoteOk = false;
+  let remoteErr = null;
   if (hasKv) {
-    const r = await kv.lpush(LIST_KEY, entry);
-    remoteOk = r !== null;
+    try {
+      const r = await kv.lpush(LIST_KEY, entry);
+      remoteOk = r !== null;
+    } catch (err) { remoteErr = err && err.message; remoteOk = false; }
   }
   const local = readLocalFile();
   local.unshift(entry);
   const localOk = writeLocalFile(local);
-  return { remoteOk, localOk };
+  return { remoteOk, localOk, remoteErr };
 }
 
 async function clearAll() {
-  if (hasKv) await kv.del(LIST_KEY);
+  let remoteOk = true;
+  let localOk = true;
+  if (hasKv) {
+    try { await kv.del(LIST_KEY); remoteOk = true; }
+    catch { remoteOk = false; }
+  }
   try {
-    if (fs.existsSync(LOCAL_FILE)) fs.unlinkSync(LOCAL_FILE);
-  } catch {}
-  return true;
+    if (fs.existsSync(LOCAL_FILE)) { fs.unlinkSync(LOCAL_FILE); localOk = true; }
+  } catch { localOk = false; }
+  return { remoteOk, localOk };
 }
 
 module.exports = {
