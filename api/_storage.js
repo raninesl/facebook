@@ -90,33 +90,39 @@ function fetchWithTimeout(url, opts, timeoutMs = 4500) {
 }
 
 const kv = (() => {
-  let url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-  let token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
-  let source = 'KV_OR_UPSTASH_REST';
-  if ((!url || !token) && process.env.REDIS_URL) {
-    const p = parseRedisUrl(process.env.REDIS_URL);
-    if (p) { url = p.base; token = p.token; source = 'REDIS_URL -> ' + (p.host || ''); }
+  const env = tryEnvRestConfig();
+  let cfg = null;
+  if (env) { cfg = env; }
+  if (!cfg && process.env.REDIS_URL) {
+    const p = buildRestFromRedis(process.env.REDIS_URL);
+    if (p) cfg = Object.assign(p, { source: 'REDIS_URL -> ' + (p.source || '') });
   }
-  if ((!url || !token) && process.env.KV_URL) {
-    const p = parseRedisUrl(process.env.KV_URL);
-    if (p) {
-      url = p.base;
-      token = process.env.KV_REST_TOKEN || p.token || '';
-      source = 'KV_URL -> ' + (p.host || '');
-    } else if (/^https?:\/\//i.test(process.env.KV_URL)) {
+  if (!cfg && process.env.KV_URL) {
+    const p = buildRestFromRedis(process.env.KV_URL);
+    if (p) { cfg = Object.assign(p, { source: 'KV_URL -> ' + (p.source || '') }); }
+    else if (/^https?:\/\//i.test(process.env.KV_URL)) {
       const slash = process.env.KV_URL.indexOf('/', process.env.KV_URL.indexOf('://') + 3);
-      url = (slash > 0 ? process.env.KV_URL.slice(0, slash) : process.env.KV_URL).replace(/\/$/, '');
-      token = process.env.KV_REST_TOKEN || '';
-      source = 'KV_URL https -> ' + url;
+      const base = (slash > 0 ? process.env.KV_URL.slice(0, slash) : process.env.KV_URL).replace(/\/$/, '');
+      const token = process.env.KV_REST_TOKEN || process.env.KV_REST_API_TOKEN || '';
+      if (base && token) {
+        cfg = { base, token, source: 'KV_URL https + KV_REST_TOKEN' };
+        try { cfg.host = new URL(base).hostname.toLowerCase(); } catch { cfg.host = ''; }
+      }
     }
   }
-  if (!url || !token) return null;
-  const base = url.replace(/\/$/, '');
+  if (!cfg) return null;
+  const base = cfg.base.replace(/\/+$/, '');
+  const token = cfg.token;
   const headers = {
     Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    Accept: 'application/json'
   };
-  storageDiag.config = { basePrefix: base.slice(0, 24) + (base.length > 24 ? '...' : ''), source };
+  storageDiag.config = {
+    basePrefix: base.slice(0, 32) + (base.length > 32 ? '...' : ''),
+    source: cfg.source || 'unknown',
+    host: (cfg.host || '').slice(0, 40)
+  };
   const request = async (body) => {
     const target = base + '/';
     storageDiag.lastTarget = target;
@@ -130,13 +136,20 @@ const kv = (() => {
       storageDiag.lastStatus = res.status;
       if (!res.ok) {
         const t = await res.text();
-        storageDiag.lastError = 'HTTP ' + res.status + ': ' + ((t || '').slice(0, 120));
+        storageDiag.lastError = 'HTTP ' + res.status + ': ' + ((t || '').slice(0, 180));
         storageDiag.lastErrorAt = Date.now();
         return null;
       }
-      const json = await res.json();
+      const text = await res.text();
       storageDiag.lastError = null;
-      return json;
+      if (!text) return null;
+      try { return JSON.parse(text); }
+      catch (e) {
+        if (Array.isArray(body) && body[0] === 'PING' && /pong/i.test(text)) return { result: 'PONG' };
+        storageDiag.lastError = 'JSON parse failed: ' + (e && e.message) + ' raw=' + text.slice(0, 80);
+        storageDiag.lastErrorAt = Date.now();
+        return null;
+      }
     } catch (err) {
       storageDiag.lastError = (err && err.code ? err.code + ': ' : '') + (err && err.message ? err.message : String(err));
       storageDiag.lastErrorAt = Date.now();
@@ -145,12 +158,31 @@ const kv = (() => {
   };
   const extractSingle = (r, alt0) => {
     if (r === null || r === undefined) return null;
-    if (r && typeof r === 'object' && ('result' in r)) return r.result;
+    if (r && typeof r === 'object' && !Array.isArray(r)) {
+      if ('result' in r) return r.result;
+      if ('error' in r) { storageDiag.lastError = 'RESP error: ' + String(r.error).slice(0, 180); return null; }
+      const keys = Object.keys(r);
+      if (keys.length === 1) return r[keys[0]];
+    }
     if (alt0 !== undefined && Array.isArray(r) && r.length > 0) return r[0];
     return r;
   };
+  const extractArr = (r) => {
+    if (r === null || r === undefined) return [];
+    if (r && typeof r === 'object' && !Array.isArray(r) && 'result' in r) {
+      if (Array.isArray(r.result)) return r.result;
+    }
+    if (Array.isArray(r) && r.length && Array.isArray(r[0])) return r[0];
+    if (Array.isArray(r)) return r;
+    if (r && typeof r === 'object') {
+      const vs = Object.values(r);
+      const firstArr = vs.find(v => Array.isArray(v));
+      if (firstArr) return firstArr;
+    }
+    return [];
+  };
   const out = {
-    source,
+    source: cfg.source || 'unknown',
     base,
     async lpush(key, value) {
       const r = await request(['LPUSH', key, JSON.stringify(value)]);
@@ -159,10 +191,10 @@ const kv = (() => {
     },
     async lrange(key, start, end) {
       const r = await request(['LRANGE', key, String(start), String(end)]);
-      let arr = (r && typeof r === 'object' && ('result' in r)) ? r.result : (Array.isArray(r) ? r[0] : null);
-      if (!arr && Array.isArray(r)) arr = r;
-      if (!arr || !Array.isArray(arr) || !arr.length) return [];
+      const arr = extractArr(r);
+      if (!arr.length) return [];
       return arr.map((x) => {
+        if (typeof x !== 'string') return null;
         try { return JSON.parse(x); } catch { return null; }
       }).filter(Boolean);
     },
@@ -175,7 +207,9 @@ const kv = (() => {
       const r = await request(['PING']);
       if (r === null) return false;
       const s = extractSingle(r, false);
-      return (typeof s === 'string') ? /pong/i.test(s) : (s !== null && s !== undefined);
+      if (typeof s === 'string') return /pong/i.test(s);
+      if (typeof s === 'number') return s >= 0;
+      return s !== null && s !== undefined;
     }
   };
   return out;
@@ -209,6 +243,52 @@ const isVercel = !!process.env.VERCEL
   || !!process.env.UPSTASH_REDIS_REST_URL
   || !!process.env.REDIS_URL
   || !!process.env.KV_URL;
+
+function buildRestFromRedis(redisUrl) {
+  if (!redisUrl || typeof redisUrl !== 'string') return null;
+  try {
+    const u = String(redisUrl).trim();
+    if (!/^rediss?:\/\//i.test(u)) return null;
+    const protoEnd = u.indexOf('://') + 3;
+    const authEnd = u.lastIndexOf('@');
+    if (authEnd < protoEnd) return null;
+    const auth = decodeURIComponent(u.slice(protoEnd, authEnd));
+    const hostPort = u.slice(authEnd + 1).split('/')[0].split('?')[0];
+    const colon = hostPort.lastIndexOf(':');
+    const host = (colon >= 0 ? hostPort.slice(0, colon) : hostPort).toLowerCase();
+    if (!host || /localhost|127\.0\.0\.1/i.test(host)) return null;
+    const up = auth.indexOf(':');
+    const token = up >= 0 ? auth.slice(up + 1) : auth;
+    if (!token) return null;
+    let base = 'https://' + host;
+    if (/\.db\.redis\.io$/i.test(host)) base = 'https://' + host;
+    else if (/\.upstash\.io$/i.test(host)) base = 'https://' + host;
+    else if (/\.vercel-storage\.com$/i.test(host)) {
+      base = 'https://' + host;
+    } else {
+      base = 'https://' + host;
+    }
+    return { base: base.replace(/\/+$/, ''), token, host, source: host };
+  } catch (e) {
+    storageDiag.lastError = 'buildRestFromRedis: ' + (e && e.message);
+    storageDiag.lastErrorAt = Date.now();
+    return null;
+  }
+}
+
+function tryEnvRestConfig() {
+  const envs = [
+    { url: process.env.KV_REST_API_URL, tok: process.env.KV_REST_API_TOKEN, src: 'KV_REST_API+TOKEN' },
+    { url: process.env.UPSTASH_REDIS_REST_URL, tok: process.env.UPSTASH_REDIS_REST_TOKEN, src: 'UPSTASH_REST' },
+    { url: process.env.UPSTASH_KAFKA_REST_URL, tok: process.env.UPSTASH_KAFKA_REST_TOKEN, src: 'UPSTASH_KAFKA (fallback)' },
+  ];
+  for (const e of envs) {
+    if (e.url && e.tok) {
+      return { base: String(e.url).replace(/\/+$/, ''), token: e.tok, host: (function(u){ try { return new URL(String(e.url)).hostname.toLowerCase(); } catch { return ''; } })(e.url), source: e.src };
+    }
+  }
+  return null;
+}
 
 function readLocalFile() {
   try {
