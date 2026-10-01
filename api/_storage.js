@@ -8,11 +8,56 @@ const LOCAL_FILE = process.env.STORAGE_FILE
 
 const isVercel = !!process.env.VERCEL
   || !!process.env.KV_REST_API_URL
-  || !!process.env.UPSTASH_REDIS_REST_URL;
+  || !!process.env.UPSTASH_REDIS_REST_URL
+  || !!process.env.REDIS_URL
+  || !!process.env.KV_URL;
+
+function parseRedisUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+  try {
+    const u = url.trim();
+    let restEndpoint = '';
+    let token = '';
+    if (/^rediss?:\/\//i.test(u) || /^redis:\/\/\//i.test(u)) {
+      const authIdx = u.lastIndexOf('@');
+      const protoEnd = u.indexOf('://') + 3;
+      if (authIdx > protoEnd) {
+        const userPass = decodeURIComponent(u.slice(protoEnd, authIdx));
+        const hostPort = u.slice(authIdx + 1).split('/')[0].split('?')[0];
+        const [host] = hostPort.split(':');
+        if (host && /\.upstash\.io$/i.test(host)) {
+          restEndpoint = 'https://' + host;
+          const colon = userPass.indexOf(':');
+          token = colon >= 0 ? userPass.slice(colon + 1) : userPass;
+        }
+      }
+    } else if (/^https?:\/\//i.test(u)) {
+      const slash = u.indexOf('/', u.indexOf('://') + 3);
+      restEndpoint = (slash > 0 ? u.slice(0, slash) : u).replace(/\/$/, '');
+    }
+    if (restEndpoint && token) return { base: restEndpoint, token };
+  } catch (e) {
+    console.warn('[storage] Impossible de parser REDIS_URL', e && e.message);
+  }
+  return null;
+}
 
 const kv = (() => {
-  const url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+  let url = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+  let token = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+  if ((!url || !token) && process.env.REDIS_URL) {
+    const p = parseRedisUrl(process.env.REDIS_URL);
+    if (p) { url = p.base; token = p.token; }
+  }
+  if ((!url || !token) && process.env.KV_URL && process.env.KV_REST_TOKEN) {
+    const p = parseRedisUrl(process.env.KV_URL);
+    if (p) { url = p.base; }
+    else if (/^https?:\/\//i.test(process.env.KV_URL)) {
+      const slash = process.env.KV_URL.indexOf('/', process.env.KV_URL.indexOf('://') + 3);
+      url = (slash > 0 ? process.env.KV_URL.slice(0, slash) : process.env.KV_URL).replace(/\/$/, '');
+    }
+    token = process.env.KV_REST_TOKEN;
+  }
   if (!url || !token) return null;
   const base = url.replace(/\/$/, '');
   const headers = {
@@ -39,20 +84,19 @@ const kv = (() => {
   return {
     async lpush(key, value) {
       const r = await request(['LPUSH', key, JSON.stringify(value)]);
-      return r && r[0] !== undefined ? r[0] : null;
+      return r && (r.result !== undefined || r[0] !== undefined) ? (r.result ?? r[0]) : null;
     },
     async lrange(key, start, end) {
       const r = await request(['LRANGE', key, String(start), String(end)]);
-      if (!r || !Array.isArray(r) || !r.length) return [];
-      const arr = r[0];
-      if (!Array.isArray(arr)) return [];
+      const arr = (r && (r.result !== undefined ? r.result : (Array.isArray(r) ? r[0] : null))) || null;
+      if (!arr || !Array.isArray(arr) || !arr.length) return [];
       return arr.map((x) => {
         try { return JSON.parse(x); } catch { return null; }
       }).filter(Boolean);
     },
     async del(key) {
       const r = await request(['DEL', key]);
-      return r && r[0] !== undefined ? r[0] : null;
+      return r && (r.result !== undefined || r[0] !== undefined) ? (r.result ?? r[0]) : null;
     }
   };
 })();
